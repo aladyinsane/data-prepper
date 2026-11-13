@@ -4,7 +4,7 @@ Current state only. Git history records what happened.
 
 ## Waiting on Lauren
 
-- [004](chunks/004-remote-desktop-environment.md): report what the remote desktop can run: Python and SQLite versions, installed libraries (including openpyxl for Excel), whether a copied folder of .py files imports, memory. Dataset sizes and formats are already answered.
+- [004](chunks/004-remote-desktop-environment.md): two items left: the SQLite version (second line of the version command), and whether a module in a copied folder of .py files actually imports. Everything else is answered.
 - [001](chunks/001-current-process.md): describe the current HCRIS refresh. Lower priority now; it feeds the HCRIS test case.
 
 ## In progress
