@@ -36,7 +36,7 @@ A small Python package plus per-dataset config. Each project imports the package
 
 ## Constraints
 
-- **Two places it has to run.** My laptop, where I can run Python locally. And a remote desktop that is very locked down: it has SAS, and Python with numpy, pandas, and maybe a few other libraries (to be checked), otherwise standard library only.
+- **Two places it has to run.** My laptop, where I can run Python locally. And a remote desktop that is very locked down: it has SAS, and Python 3.13 and SQLite 3.45, with numpy, pandas, pyodbc and their dependencies (no openpyxl), otherwise standard library only. 64 GB RAM.
 - **Some datasets are very large.** Usually hundreds of thousands to several million rows; sometimes tens of millions of rows with hundreds of columns.
 - **Formats.** Usually CSV and other delimited text files. Excel files, usually for supplemental data. SAS datasets and SQL Server tables are possible later.
 - I'm also comfortable with PowerShell, cmd, node, and git bash.
@@ -59,5 +59,4 @@ A small Python package plus per-dataset config. Each project imports the package
 
 ## Open questions
 
-- What exactly is on the remote desktop: Python version, installed libraries, whether sqlite3 works, memory? (chunk 004)
-- Reading Excel needs a library the standard library doesn't have (pandas uses openpyxl for .xlsx). Is one on the remote desktop? (chunk 004)
+(none)

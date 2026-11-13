@@ -1,6 +1,6 @@
 # 005: ADR for the package design
 
-- **Status:** Ready once 004 is answered (`PROBLEM.md` approved 2026-11-13)
+- **Status:** Ready
 - **Who:** agent
 - **Goal:** decide how the package is built so it runs in both places and handles large files.
 - **Inputs:** `PROBLEM.md`, the answers in chunk 004, `C:\dev\_templates\ADR_TEMPLATE.md`. `C:\dev\daita` and `C:\dev\_templates\data-workflow.md` are read-only reference for ideas already tried.
