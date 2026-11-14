@@ -4,7 +4,7 @@ Current state only. Git history records what happened.
 
 ## Waiting on Lauren
 
-- [001](chunks/001-current-process.md): describe the current HCRIS refresh. Lower priority now; it feeds the HCRIS test case.
+(none)
 
 ## In progress
 
@@ -12,6 +12,7 @@ Current state only. Git history records what happened.
 
 ## Ready
 
+- [001](chunks/001-current-process.md): describe the current HCRIS refresh. Lauren's call at triage, 2026-11-14: this is the next chunk.
 - [005](chunks/005-adr-package-design.md): ADR for the package design.
 - After the first chunk is built: run the `qa-peer` agent (`.claude/agents/qa-peer.md`) on it in a fresh session. First trial of that agent.
 
