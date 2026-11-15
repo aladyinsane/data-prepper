@@ -1,6 +1,6 @@
 # 005: ADR for the package design
 
-- **Status:** Ready
+- **Status:** Waiting on Lauren
 - **Who:** agent
 - **Goal:** decide how the package is built so it runs in both places and handles large files.
 - **Inputs:** `PROBLEM.md`, the answers in chunk 004, `C:\dev\_templates\ADR_TEMPLATE.md`. `C:\dev\daita` and `C:\dev\_templates\data-workflow.md` are read-only reference for ideas already tried.
@@ -15,4 +15,10 @@
 
 ## Handoff
 
-(not started)
+**2026-11-15 (agent):**
+
+- Wrote `docs/adr/0001-package-design.md`, status Proposed. It picks SQLite (standard library) as the engine and JSON plus `.sql` rule files for config, names each stage's inputs and outputs, lists dependencies against chunk 004, and lists the first three build chunks.
+- Backed by one benchmark on public HCRIS FY2023 (19.6 M rows), run on the laptop only. Numbers are in the ADR. The benchmark script was a throwaway and is not in the repo.
+- Not checked by anyone but the agent that wrote it. The "Done when" boxes above are left unticked for a fresh check.
+- Judgment calls made: "snapshot" means hash plus untouched raw table, not a file copy; tests use `unittest`; Excel is not read in version 1.
+- Pick up: Lauren answers the four questions at the end of the ADR. On sign-off, set the ADR to Accepted and write chunk files 006 to 008 from "First three build chunks".
