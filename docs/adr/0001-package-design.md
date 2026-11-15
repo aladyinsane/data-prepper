@@ -35,7 +35,7 @@ One benchmark, run on the laptop on 2026-11-15, standard library only (Python 3.
 
 Peak memory for the whole run was 616 MB, of which 256 MB was the cache size the script asked for. The database file reached 4.6 GB.
 
-What this shows: SQLite handles HCRIS-sized data in seconds with flat memory. Wide data loads at about 33,000 rows a second, so 10 million rows by 300 columns would take about 5 minutes to load and 50 million about 25 minutes. That is slow but it finishes. Disk is the real cost: a table in SQLite takes about as much space as its raw text, and each stage that copies a table adds that much again.
+What this shows: SQLite handles HCRIS-sized data in seconds with flat memory. Wide data loads at about 33,000 rows a second, so if load time grows in step with row count (assumed, not tested), 10 million rows by 300 columns would take about 5 minutes to load and 50 million about 25 minutes. That is slow but it should finish. Disk is the real cost: a table in SQLite takes about as much space as its raw text, and each stage that copies a table adds that much again.
 
 What it does not show: speed on the remote desktop, or behaviour on a real file with tens of millions of wide rows. The first build chunk has to test both.
 
@@ -48,6 +48,7 @@ What it does not show: speed on the remote desktop, or behaviour on a real file 
 - Each run has one working database file. It can be deleted and rebuilt from the source files at any time, so it is written with journaling and sync turned off for speed.
 - pandas and numpy are never imported by the package. A project's own code can use them on the summary outputs.
 - SAS is not used. It stays the fallback in `PROBLEM.md` if a real large file fails on the remote desktop.
+- Type checks in the clean stage (is this a number, does this date match its format) are small Python functions registered with SQLite and called from SQL. SQLite cannot parse a date by an arbitrary format on its own, and it accepts bad numbers silently. The date `format` in the config uses Python's `strptime` codes. The speed cost of these functions is not measured yet; build chunk 2 measures it.
 - SQL is limited to what SQLite 3.45.3 supports. The laptop has a newer SQLite, so this needs a test (see Consequences).
 
 ### Config format
@@ -109,6 +110,8 @@ clinic_visits/
 select visit_id, paid_amount from visits where paid_amount < 0;
 ```
 
+In the example, the summary groups `visits` by `county`. That works because summarize reads the merged table, where `county` has been joined on.
+
 A rule is one of two kinds. A **check** is a query that returns the rows breaking the rule. A **transform** is a query whose result replaces the table. Rules run in file-name order. The exact header format is settled in the build chunk for the model stage.
 
 ### What each stage takes in and writes out
@@ -134,7 +137,7 @@ Rules that apply to every stage:
 - Install: copy the `data_prepper/` folder next to the project. No pip.
 - One command: `python -m data_prepper run <dataset folder>`. Single stages can be run by name for debugging.
 - `python -m data_prepper selftest` builds a small made-up dataset and runs all stages on it. It needs no data files, so it is the check to run on the remote desktop.
-- Tests use the standard library's `unittest`, so they also run on the remote desktop. pytest can run them at home.
+- Tests use the standard library's `unittest`, so they run in both places with nothing installed.
 
 ### Dependencies
 
@@ -164,7 +167,7 @@ Merge, summarize, NPPES, and the large-file trial on the remote desktop follow a
 
 - **Streaming Python only.**
   - For: nothing but the standard library. Memory stays flat for row-by-row work such as type checks.
-  - Against: joins, group-bys, and duplicate checks on data larger than memory need sorting and merging on disk, which means writing and testing a small database by hand. Rules would be Python instead of SQL. Row-by-row Python is also several times slower than SQLite for the same aggregate.
+  - Against: joins, group-bys, and duplicate checks on data larger than memory need sorting and merging on disk, which means writing and testing a small database by hand. Rules would be Python instead of SQL. Row-by-row Python is also expected to be slower than SQLite for the same aggregate (not measured here).
 - **SQLite (chosen).**
   - For: in the standard library in both places. Works from disk, so memory stays flat (616 MB peak on 19.6 M rows). Joins, group-bys, window functions, and indexes are already built and tested. Rules are SQL, which Lauren already writes. The working database can be opened and inspected with any SQLite tool when a number looks wrong.
   - Against: it stores rows, not columns, so wide tables are slow to load (about 33,000 rows a second at 300 columns) and take a lot of disk. It runs on one core. Its typing is loose: a bad value in a number column is stored without complaint unless the clean stage checks it, so the clean stage has to do real type checking of its own. It has no date type, so dates are stored as ISO text.
@@ -172,9 +175,9 @@ Merge, summarize, NPPES, and the large-file trial on the remote desktop follow a
   - For: built for files this size, and already on the remote desktop.
   - Against: it can't run or be tested at home, so half the package would be untested until it reached work. It means two languages and generated SAS code, which `PROBLEM.md` puts out of scope unless Python fails.
 - **pandas.**
-  - For: installed in both places, and familiar.
+  - For: installed on the remote desktop, and familiar. (It is not installed on the laptop's Python 3.14 today.)
   - Against: it holds the table in memory. Tens of millions of rows by hundreds of columns will not fit reliably in a shared 64 GB session. `PROBLEM.md` already rules it out of the core.
-- **DuckDB (what daita used).** Faster than SQLite for this work, but it is not on the remote desktop. Ruled out by the constraints, not on merit.
+- **DuckDB (what daita used).** Likely faster than SQLite for this work (not measured here), but it is not on the remote desktop. Ruled out by the constraints, not on merit.
 
 ### Config format
 
@@ -196,12 +199,12 @@ Easier:
 
 Harder, and accepted:
 
-- **Disk use.** `work.db` holds a raw, clean, model, and merged copy of each table. Expect 3 to 4 times the size of the source text. The HCRIS benchmark made 4.6 GB from about 0.8 GB of text plus the wide table. For the largest files this may not fit, and the fix (dropping earlier stage tables as the run goes, or keeping only the columns named in the config) costs the ability to inspect them. Decide this when a real file forces it.
+- **Disk use.** `work.db` holds a raw, clean, model, and merged copy of each table. A rough estimate is 3 to 4 times the size of the source text; this was not measured stage by stage. The benchmark's 4.6 GB file held about 0.7 GB of HCRIS text loaded once, one typed copy of NMRC, and the made-up wide table, whose text size was not measured separately. For the largest files this may not fit, and the fix (dropping earlier stage tables as the run goes, or keeping only the columns named in the config) costs the ability to inspect them. Decide this when a real file forces it.
 - **Speed on wide tables.** A file with tens of millions of rows and hundreds of columns will take tens of minutes to load. If that is too slow in practice, SAS for the heavy step comes back on the table.
 - **Type checking is ours to write.** SQLite will not reject bad values, so the clean stage carries that weight and needs the most tests.
 - **Two SQLite versions.** The laptop has 3.50, the remote desktop 3.45. SQL that works at home can fail at work. `selftest` on the remote desktop is the guard, and it should run after every chunk that adds SQL.
 - **Excel is not read.** Without openpyxl, the package cannot open .xlsx on the remote desktop. Version 1 expects supplemental Excel sheets to be saved as CSV first. A small standard-library .xlsx reader is possible later if this turns out to hurt.
-- **Not tested yet:** the remote desktop's actual speed and free disk, and a real file at the top of the size range.
+- **Not tested yet:** the remote desktop's actual speed, its free disk, whether it gives a writable temp folder for SQLite's sorting, and a real file at the top of the size range. Free disk and a writable folder are real dependencies that chunk 004 did not cover.
 
 ## Questions for Lauren
 
@@ -209,6 +212,7 @@ Harder, and accepted:
 2. Sign off on JSON config plus `.sql` rule files?
 3. Is "save supplemental Excel as CSV first" acceptable for version 1?
 4. Roughly how much free disk does the remote desktop give you for working files?
+5. `PROBLEM.md` says the load stage takes a "snapshot". This ADR reads that as the file's hash plus the untouched raw table, with no second copy of the source file. Is that acceptable? It is a reading of an approved brief line, so it needs your OK.
 
 ## Related
 

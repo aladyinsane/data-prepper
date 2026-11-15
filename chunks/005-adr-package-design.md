@@ -19,6 +19,6 @@
 
 - Wrote `docs/adr/0001-package-design.md`, status Proposed. It picks SQLite (standard library) as the engine and JSON plus `.sql` rule files for config, names each stage's inputs and outputs, lists dependencies against chunk 004, and lists the first three build chunks.
 - Backed by one benchmark on public HCRIS FY2023 (19.6 M rows), run on the laptop only. Numbers are in the ADR. The benchmark script was a throwaway and is not in the repo.
-- Not checked by anyone but the agent that wrote it. The "Done when" boxes above are left unticked for a fresh check.
+- Checked by `qa-peer` in a fresh context on 2026-11-15: all five "Done when" items pass, row counts and arithmetic re-derived and matching, verdict pass with fixes. Its fixes are applied (untested claims labelled, pandas and pytest statements corrected, date checking described, snapshot question added). The fixes themselves have not been re-checked. Agent QA only; Lauren's review is still needed.
 - Judgment calls made: "snapshot" means hash plus untouched raw table, not a file copy; tests use `unittest`; Excel is not read in version 1.
-- Pick up: Lauren answers the four questions at the end of the ADR. On sign-off, set the ADR to Accepted and write chunk files 006 to 008 from "First three build chunks".
+- Pick up: Lauren answers the five questions at the end of the ADR. On sign-off, set the ADR to Accepted and write chunk files 006 to 008 from "First three build chunks".
