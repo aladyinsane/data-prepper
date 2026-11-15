@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (2026-11-15). Waiting on Lauren's sign-off. No package code is written until then.
+Accepted by Lauren on 2026-11-15.
 
 ## Context
 
@@ -206,13 +206,13 @@ Harder, and accepted:
 - **Excel is not read.** Without openpyxl, the package cannot open .xlsx on the remote desktop. Version 1 expects supplemental Excel sheets to be saved as CSV first. A small standard-library .xlsx reader is possible later if this turns out to hurt.
 - **Not tested yet:** the remote desktop's actual speed, its free disk, whether it gives a writable temp folder for SQLite's sorting, and a real file at the top of the size range. Free disk and a writable folder are real dependencies that chunk 004 did not cover.
 
-## Questions for Lauren
+## Lauren's answers (2026-11-15)
 
-1. Sign off on SQLite as the engine, with SAS only as the fallback?
-2. Sign off on JSON config plus `.sql` rule files?
-3. Is "save supplemental Excel as CSV first" acceptable for version 1?
-4. Roughly how much free disk does the remote desktop give you for working files?
-5. `PROBLEM.md` says the load stage takes a "snapshot". This ADR reads that as the file's hash plus the untouched raw table, with no second copy of the source file. Is that acceptable? It is a reading of an approved brief line, so it needs your OK.
+1. SQLite as the engine, with SAS only as the fallback: yes.
+2. JSON config plus `.sql` rule files: yes.
+3. Supplemental Excel saved as CSV first for version 1: yes.
+4. Free disk on the remote desktop: not known yet. Lauren will check (see `STATUS.md`).
+5. "Snapshot" in `PROBLEM.md` means the file's hash plus the untouched raw table, with no second copy of the source file: yes.
 
 ## Related
 

@@ -4,7 +4,8 @@ Current state only. Git history records what happened.
 
 ## Waiting on Lauren
 
-- [005](chunks/005-adr-package-design.md): sign off on `docs/adr/0001-package-design.md` (Proposed). Five one-line questions at its end: SQLite as the engine, JSON plus `.sql` rules, Excel saved as CSV for version 1, free disk on the remote desktop, and whether "snapshot" can mean hash plus raw table with no file copy.
+- Review and merge the PR for ADR-0001 (Accepted in chat, 2026-11-15).
+- Free disk on the remote desktop. From the folder you would work in, type `python -c "import shutil; print(round(shutil.disk_usage('.').free/1e9), 'GB free')"` and report the number only. Not blocking the first build chunks.
 
 ## In progress
 
