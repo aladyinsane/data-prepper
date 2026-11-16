@@ -1,6 +1,6 @@
 # 006: Package skeleton and the load stage
 
-- **Status:** Built, PR open, fresh qa-peer check owed
+- **Status:** Built, PR open, qa-peer check done: pass with fixes (five bugs, not fixed yet)
 - **Who:** agent (a cheaper model is fine; the design is already decided)
 - **Goal:** one command loads a dataset's source files into a working SQLite database and writes a load report.
 - **Inputs:**
@@ -136,10 +136,25 @@ Run on the laptop: Python 3.14.6, SQLite 3.50.4. Python 3.13 and SQLite 3.45.3 w
 - Run id collisions: if a second run starts in the same second, it waits until the next one.
 - Added `.gitignore` with `__pycache__/` as well as `runs/`, plus `data_prepper/__init__.py`.
 
+**qa-peer check, 2026-11-16 (fresh agent, not the builder)**
+
+Verdict: pass with fixes. All seven boxes passed on its own runs (Python 3.14.6, SQLite 3.50.4). Row counts matched a newline count of the zip members (19,574,053 / 6,109 / 3,778,351), the hash matched `certutil`, and all 23,358,513 loaded rows matched their source lines. HCRIS column names and order match the CMS documentation. Not checked: Python 3.13, SQLite 3.45.3, Python 3.12, other fiscal years.
+
+Bugs found. None is fixed yet, and none affects the HCRIS numbers (the FY2023 files have no quote characters). The first, second, and fourth were reproduced a second time in the main session.
+
+1. `load.py:76`: a stray quote swallows the rows after it and the run still exits 0 with both checks passing. `a,b / 1,x / 2,"y / 3,z / 4,w` gives rows_read 2, rows_loaded 2, rows_bad 0. Nothing compares records read to lines in the file.
+2. `load.py:37`: `glob` runs over the data root too, so a data root with `[` or `]` in its name finds no files.
+3. `load.py:61` and `:147`: `_file` and the report's `file` are the bare file name, so `y1/in.csv` and `y2/in.csv` cannot be told apart.
+4. `cli.py:29` catches only `ConfigError`. `"encoding": "base64"` or a `.zip` that is not a zip gives a traceback and exit 1, the code reserved for a failed check.
+5. `load.py:125`: the parse-error line number counts records across all of a table's files, not lines in the file at fault.
+
+Smaller: a UTF-8 BOM is not handled or hinted at; an exit 2 after the run folder is made leaves a `work.db` with no report; "at byte N" in the bad-encoding message is an offset in the decoder block, not the file; the comment at `load.py:141` says once per file but hashing is once per table; an empty file with a header reports "file has None"; `csv.field_size_limit` is set at import for the whole process.
+
+Follows the brief, but worth knowing: `csv.reader` removes quoting, so `"1"` is stored as `1` and a bad row's `row_text` is the fields joined back, not the original line. A blank line, including one at the end of a file, is a bad row and makes the run exit 1.
+
 **Where to pick up**
 
-1. Run the first formal `qa-peer` trial on this chunk (see `C:\dev\dev-team\STATUS.md`).
-2. Lauren runs `python -m data_prepper selftest` on the remote desktop. That is the first test on Python 3.13 and SQLite 3.45.3.
-3. Merge after the check and her review. Chunk 007 follows.
-
-After this chunk is checked, two things follow, both listed in `STATUS.md`: Lauren runs `selftest` on the remote desktop, and the first formal `qa-peer` trial runs on this chunk.
+1. Lauren answers the four questions in `STATUS.md`. Bugs 1 and 3 depend on them.
+2. Fix the bugs, on this branch or as a new chunk (her call), then a fresh check of the fixes.
+3. Lauren runs `python -m data_prepper selftest` on the remote desktop. That is the first test on Python 3.13 and SQLite 3.45.3.
+4. Merge after her review. Chunk 007 follows.
