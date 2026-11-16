@@ -31,6 +31,6 @@ From `PROBLEM.md` ("What the constraints mean for the design" and "Out of scope"
 - Config is JSON or plain Python, not YAML.
 - Large files are processed in pieces, never read whole into memory.
 - daita is parked as read-only reference. This repo is the one home for this work.
-- The engine for big joins and summaries is not decided yet. That is the ADR in chunk 005.
+- SQLite, through the standard library, is the engine. Config is one JSON file per dataset plus `.sql` rule files. See `docs/adr/0001-package-design.md`.
 
 Where things stand is in `STATUS.md`.
