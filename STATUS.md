@@ -5,7 +5,6 @@ Current state only. Git history records what happened.
 ## Waiting on Lauren
 
 - Review the PRs for chunks 003 and 002 (CCN change research). One question in chunk 003's handoff: do the Mt. Graham, Sevier County, and Mena examples look like the cases you hit at work?
-- OK to download one public Provider of Services file (outside the repo) to test whether it links old and new CCNs? Yes or no. See the end of `docs/research/ccn-change-sources.md`.
 - Review and merge the PR for ADR-0001 (Accepted in chat, 2026-11-15).
 - Review and merge the PR that adds chunk files 006 to 008. They have not been checked by a fresh agent.
 - Free disk on the remote desktop. From the folder you would work in, type `python -c "import shutil; print(round(shutil.disk_usage('.').free/1e9), 'GB free')"` and report the number only. Not blocking the first build chunks.
@@ -22,7 +21,7 @@ Current state only. Git history records what happened.
 - [007](chunks/007-clean-stage.md): the clean stage. After 006 is merged.
 - [008](chunks/008-model-stage.md): the model stage. After 007 is merged.
 - Not written as chunks yet: merge, summarize, NPPES by config only, and a large-file trial on the remote desktop.
-- If Lauren says yes: test Provider of Services against three known CCN pairs (steps at the end of `docs/research/ccn-change-sources.md`). Not written as a chunk file yet.
+- Follow-ups from the CCN research, not chunk files yet: fix the two-prefix state bug in `scripts/ccn_changes.py`, look up the Provider of Services termination codes, and check the 22 pairs it leaves blank. List at the end of `docs/research/ccn-change-sources.md`.
 
 ## Done
 

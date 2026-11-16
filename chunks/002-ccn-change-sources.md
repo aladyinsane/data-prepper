@@ -14,8 +14,10 @@
 
 **2026-11-16 (agent):**
 
-- Wrote `docs/research/ccn-change-sources.md`.
-- Answer: no public source links old and new CCNs for hospital to CAH conversions. Hospital Enrollments (PECOS) links them for Rural Emergency Hospital conversions only, through its `CAH OR HOSPITAL CCN` field. Hospital Change of Ownership explains mergers. Both confirmed from CMS data dictionaries, not from data samples.
-- Not met: the Provider of Services file was a named candidate and is not settled. It has a "cross reference provider number" field whose definition could not be read. Update frequency is also unconfirmed for all three files. The first "Done when" box is only partly met because of this.
-- Pick up: the note ends with a small test (three known CCN pairs looked up in one Provider of Services file) that would settle it. That needs a file download, so it needs Lauren's OK.
-- Not checked by a fresh agent.
+- Wrote `docs/research/ccn-change-sources.md` and `scripts/pos_check.py`.
+- Answer: the Provider of Services (POS) file links old and new CCNs through its `CROSS_REF_PROVIDER_NUMBER` field, including hospital to CAH conversions. Confirmed from the data (Q3 2026, read through the CMS data API with Lauren's OK, nothing saved in the repo).
+- It is not complete: of the 105 changes chunk 003 found in HCRIS, POS agrees on 82, is blank for 22, and disagrees on 1. HCRIS in turn cannot see mergers, which POS has. Recommendation: POS first, HCRIS as fallback, a person confirms.
+- Hospital Enrollments (PECOS) links REH conversions only. Hospital Change of Ownership covers mergers. Both confirmed from data dictionaries only.
+- Not done: the meaning of POS termination codes and the official definition of the cross reference field were not read. Update frequency is unconfirmed for the two PECOS files.
+- Found a bug in chunk 003's script: states with two CCN prefixes (Texas 45 and 67) are not compared across prefixes.
+- Follow-ups are listed at the end of the note. Not checked by a fresh agent.

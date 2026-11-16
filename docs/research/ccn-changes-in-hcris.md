@@ -12,7 +12,8 @@ Not checked by anyone but the agent that wrote it.
 - The script found 105 likely changes across the six file years. In 96 of them the new CCN's first fiscal year begins exactly one day after the old CCN's last one ends.
 - No old CCN matched more than one new CCN, and no new CCN matched more than one old one.
 - HCRIS has no field that says "this CCN used to be that CCN". The link has to be worked out from dates and addresses.
-- None of the 105 has been confirmed against an outside source. They are candidates with strong evidence, not confirmed matches.
+- Checked against CMS's Provider of Services file on 2026-11-16: it agrees on 82 of the 105, is blank for 22, and disagrees on 1. Details in `docs/research/ccn-change-sources.md`.
+- Known bug: the script only compares CCNs with the same first two digits, and some states have two prefixes (Texas uses 45 and 67). At least three Texas changes were missed for this reason.
 
 ## What HCRIS has to match on
 
