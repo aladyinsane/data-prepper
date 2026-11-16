@@ -9,6 +9,7 @@ import fnmatch
 import glob
 import hashlib
 import io
+import re
 import zipfile
 from pathlib import Path
 
@@ -32,10 +33,14 @@ def sha256_of(path):
 def find_files(table, data_root):
     """Source files for a table: a list of (path, member name or None)."""
     pattern = Path(table.source.path)
-    if not pattern.is_absolute():
+    # Only * is special, and only in source.path, never in the data root.
+    escaped = re.sub(r'([\[?])', lambda m: '[' + m.group(1) + ']', table.source.path)
+    if pattern.is_absolute():
+        paths = [Path(p) for p in glob.glob(escaped)]
+    else:
+        paths = [Path(data_root) / p for p in glob.glob(escaped, root_dir=data_root)]
         pattern = Path(data_root) / pattern
-    paths = sorted(Path(p) for p in glob.glob(str(pattern)))
-    paths = [p for p in paths if p.is_file()]
+    paths = sorted(p for p in paths if p.is_file())
     if not paths:
         raise ConfigError(f"table {table.name}: no files match {pattern}")
     found = []
@@ -43,8 +48,11 @@ def find_files(table, data_root):
         if p.suffix.lower() != ".zip":
             found.append((p, None))
             continue
-        with zipfile.ZipFile(p) as z:
-            names = [i.filename for i in z.infolist() if not i.is_dir()]
+        try:
+            with zipfile.ZipFile(p) as z:
+                names = [i.filename for i in z.infolist() if not i.is_dir()]
+        except zipfile.BadZipFile:
+            raise ConfigError(f"table {table.name}: {p} is not a zip file") from None
         if table.source.member:
             want = table.source.member.lower()
             hits = [n for n in names if fnmatch.fnmatchcase(n.lower(), want)]
@@ -70,13 +78,18 @@ def _load_one(con, table, path, member, stats):
     good_sql = f'INSERT INTO "raw_{table.name}" VALUES ({",".join("?" * (n + 2))})'
     bad_sql = f'INSERT INTO "badrows_{table.name}" VALUES (?,?,?,?)'
     delim = table.source.delimiter
+    quoting = {} if table.source.quoting else {"quoting": csv.QUOTE_NONE, "quotechar": None}
+    at = {"reader": None}  # so a parse error can say which line of this file
 
     def run(raw):
         with io.TextIOWrapper(raw, encoding=table.source.encoding, newline="") as text:
-            _copy(csv.reader(text, delimiter=delim))
+            at["reader"] = csv.reader(text, delimiter=delim, **quoting)
+            _copy(at["reader"])
 
     def _copy(reader):
         prev = 0  # last line number used by the previous record
+        rows = 0  # records from this file, header and blank lines at the end left out
+        blanks = []  # start lines of blank lines not yet followed by a row
         if table.source.header:
             head = next(reader, None)
             prev = reader.line_num
@@ -89,7 +102,15 @@ def _load_one(con, table, path, member, stats):
         for rec in reader:
             start = prev + 1  # a quoted field can span lines; _row is where the row starts
             prev = reader.line_num
-            stats["rows_read"] += 1
+            if not rec:  # a blank line: ignored at the end of the file, a bad row anywhere else
+                blanks.append(start)
+                continue
+            for b in blanks:
+                bad.append((label, b, 0, ""))
+            rows += len(blanks) + 1
+            stats["rows_read"] += len(blanks) + 1
+            stats["rows_bad"] += len(blanks)
+            blanks = []
             if len(rec) == n:
                 good.append((start, label, *rec))
                 if len(good) >= BATCH:
@@ -108,6 +129,9 @@ def _load_one(con, table, path, member, stats):
         if bad:
             con.executemany(bad_sql, bad)
         con.commit()
+        # Lines in the file against records read. They differ when a quote swallowed line breaks.
+        lines = reader.line_num - len(blanks) - (1 if table.source.header else 0)
+        stats["line_diff"] += abs(lines - rows)
 
     try:
         if member:
@@ -122,7 +146,7 @@ def _load_one(con, table, path, member, stats):
             "check source.encoding"
         ) from None
     except csv.Error as e:
-        raise ConfigError(f"table {table.name}: {label}: cannot parse near line {stats['rows_read'] + 1}: {e}") from None
+        raise ConfigError(f"table {table.name}: {label}: cannot parse near line {at['reader'].line_num}: {e}") from None
 
 
 def run_stage(run, con, config, data_root):
@@ -137,8 +161,8 @@ def run_stage(run, con, config, data_root):
         con.execute(
             f'CREATE TABLE "badrows_{table.name}" (_file TEXT, _row INTEGER, n_fields INTEGER, row_text TEXT)'
         )
-        stats = {"rows_read": 0, "rows_loaded": 0, "rows_bad": 0}
-        hashes = {}  # hash each file on disk once, even if several members come from it
+        stats = {"rows_read": 0, "rows_loaded": 0, "rows_bad": 0, "line_diff": 0}
+        hashes = {}  # hash each file on disk once per table, even if several members come from it
         file_entries = []
         for path, member in files:
             if path not in hashes:
@@ -146,6 +170,7 @@ def run_stage(run, con, config, data_root):
             size, digest = hashes[path]
             file_entries.append({"file": path.name, "member": member, "bytes": size, "sha256": digest})
             _load_one(con, table, path, member, stats)
+        line_diff = stats.pop("line_diff")
         tables_report[table.name] = {"files": file_entries, **stats}
         checks.append(
             {
@@ -162,6 +187,14 @@ def run_stage(run, con, config, data_root):
                 "severity": "error",
                 "status": "pass" if diff == 0 else "fail",
                 "count": abs(diff),
+            }
+        )
+        checks.append(
+            {
+                "name": f"{table.name}: lines in the files = rows read",
+                "severity": "error",
+                "status": "pass" if line_diff == 0 else "fail",
+                "count": line_diff,
             }
         )
     return {"tables": tables_report, "checks": checks}

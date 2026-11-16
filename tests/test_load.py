@@ -128,8 +128,88 @@ class Load(Case):
     def test_quoted_field_spanning_lines_uses_start_line(self):
         self.write("in.csv", 'a,b\n1,"two\nlines"\n3,4\n')
         self.write_config(one_table(src("in.csv")))
-        self.run_cli()
+        code, out, err = self.run_cli()
         self.assertEqual(self.query("select _row, b from raw_t1 order by _row"), [(2, "two\nlines"), (4, "4")])
+        # a field that spans lines cannot be told from a stray quote, so the lines check fails
+        self.assertEqual(code, 1)
+        self.assertEqual(self.failed_checks(), [("t1: lines in the files = rows read", 1)])
+
+    def failed_checks(self):
+        return [(c["name"], c["count"]) for c in self.report()["checks"] if c["status"] == "fail"]
+
+    def test_stray_quote_fails_the_lines_check(self):
+        self.write("in.csv", 'a,b\n1,x\n2,"y\n3,z\n4,w\n')
+        self.write_config(one_table(src("in.csv")))
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.report()["tables"]["t1"]["rows_read"], 2)
+        self.assertEqual(self.failed_checks(), [("t1: lines in the files = rows read", 2)])
+
+    def test_quoting_off_keeps_quotes_as_text(self):
+        self.write("in.csv", 'a,b\n1,x\n2,"y\n3,z\n4,"w"\n')
+        self.write_config(one_table(src("in.csv", quoting=False)))
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.query("select _row, b from raw_t1 order by _row"),
+                         [(2, "x"), (3, '"y'), (4, "z"), (5, '"w"')])
+
+    def test_quoting_must_be_true_or_false(self):
+        self.write("in.csv", "a,b\n1,2\n")
+        self.write_config(one_table(src("in.csv", quoting="no")))
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 2)
+        self.assertIn("tables.t1.source.quoting", err)
+
+    def test_blank_lines_at_the_end_are_ignored(self):
+        self.write("in.csv", "a,b\n1,2\n3,4\n\n\n")
+        self.write_config(one_table(src("in.csv")))
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 0, err)
+        t = self.report()["tables"]["t1"]
+        self.assertEqual((t["rows_read"], t["rows_loaded"], t["rows_bad"]), (2, 2, 0))
+        self.assertEqual(self.query("select count(*) from badrows_t1"), [(0,)])
+
+    def test_data_root_with_brackets_in_its_name(self):
+        self.write("data [2023]/in.csv", "a,b\n1,2\n")
+        self.write_config(one_table(src("in.csv")))
+        code, out, err = self.run_cli("--data-root", str(self.folder / "data [2023]"))
+        self.assertEqual(code, 0, err)
+
+    def test_brackets_in_source_path_are_not_a_pattern(self):
+        self.write("in[1].csv", "a,b\n1,2\n")
+        self.write("in1.csv", "a,b\n9,9\n")
+        self.write_config(one_table(src("in[1].csv")))
+        self.assertEqual(self.run_cli()[0], 0)
+        self.assertEqual(self.query("select _file, a from raw_t1"), [("in[1].csv", "1")])
+
+    def assert_exit2_one_line(self, expect):
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 2, err)
+        self.assertEqual(len(err.strip().splitlines()), 1, err)
+        self.assertNotIn("Traceback", err)
+        self.assertIn(expect, err)
+
+    def test_encoding_that_is_not_a_text_encoding(self):
+        self.write("in.csv", "a,b\n1,2\n")
+        self.write_config(one_table(src("in.csv", encoding="base64")))
+        self.assert_exit2_one_line("tables.t1.source.encoding")
+
+    def test_zip_that_is_not_a_zip(self):
+        self.write("in.zip", "this is not a zip")
+        self.write_config(one_table(src("in.zip", header=False)))
+        self.assert_exit2_one_line("is not a zip file")
+
+    def test_parse_error_names_the_line_in_its_own_file(self):
+        import csv
+
+        from data_prepper import load
+
+        csv.field_size_limit(1000)
+        self.addCleanup(csv.field_size_limit, load.FIELD_LIMIT)
+        self.write("p1.csv", "a,b\n" + "1,2\n" * 10)
+        self.write("p2.csv", 'a,b\n1,2\n3,"' + "x" * 2000 + "\n")
+        self.write_config(one_table(src("p*.csv")))
+        self.assert_exit2_one_line("p2.csv: cannot parse near line 3")
 
     def test_tab_delimiter_and_encoding(self):
         p = self.folder / "in.tsv"

@@ -4,7 +4,6 @@ Any problem with the config raises ConfigError. Its message is one line that
 names the file and the key. The command line prints it and exits with code 2.
 """
 
-import codecs
 import json
 import re
 from dataclasses import dataclass, field
@@ -30,6 +29,7 @@ class Source:
     header: bool
     encoding: str
     member: str | None = None
+    quoting: bool = True
 
 
 @dataclass
@@ -130,7 +130,7 @@ def load_config(folder):
 
         sraw = traw["source"]
         swhere = f"{where}.source"
-        check_keys(sraw, swhere, ["path", "delimiter", "header", "encoding"], ["member"])
+        check_keys(sraw, swhere, ["path", "delimiter", "header", "encoding"], ["member", "quoting"])
         path = check_str(sraw, "path", swhere)
         delimiter = sraw["delimiter"]
         if not isinstance(delimiter, str) or len(delimiter) != 1 or delimiter in "\r\n\"":
@@ -139,15 +139,18 @@ def load_config(folder):
             fail(f"{swhere}.header", "must be true or false")
         encoding = check_str(sraw, "encoding", swhere)
         try:
-            codecs.lookup(encoding)
+            "".encode(encoding)  # also turns down codecs that are not text encodings, like base64
         except LookupError:
             fail(f"{swhere}.encoding", f"unknown encoding {encoding!r}")
+        quoting = sraw.get("quoting", True)
+        if not isinstance(quoting, bool):
+            fail(f"{swhere}.quoting", "must be true or false")
         member = None
         if "member" in sraw:
             member = check_str(sraw, "member", swhere)
             if not path.lower().endswith(".zip"):
                 fail(f"{swhere}.member", "only allowed when path ends in .zip")
-        source = Source(path, delimiter, sraw["header"], encoding, member)
+        source = Source(path, delimiter, sraw["header"], encoding, member, quoting)
 
         columns = []
         seen = set()

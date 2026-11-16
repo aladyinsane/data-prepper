@@ -1,6 +1,6 @@
 # 006: Package skeleton and the load stage
 
-- **Status:** Built, PR open, qa-peer check done: pass with fixes (five bugs, not fixed yet)
+- **Status:** Built, PR open, qa-peer check done, bugs fixed on the branch, fresh check of the fixes owed
 - **Who:** agent (a cheaper model is fine; the design is already decided)
 - **Goal:** one command loads a dataset's source files into a working SQLite database and writes a load report.
 - **Inputs:**
@@ -152,9 +152,23 @@ Smaller: a UTF-8 BOM is not handled or hinted at; an exit 2 after the run folder
 
 Follows the brief, but worth knowing: `csv.reader` removes quoting, so `"1"` is stored as `1` and a bad row's `row_text` is the fields joined back, not the original line. A blank line, including one at the end of a file, is a bad row and makes the run exit 1.
 
+**Fixes, 2026-11-16 (after Lauren's answers)**
+
+Her answers: fix on this branch before merge; for stray quotes, both a check and a config switch; blank lines at the end of a file are ignored; `_file` stays the bare name; keep the extra check.
+
+- Bug 1: new error check per table, "lines in the files = rows read" (lines come from `csv.reader.line_num`, so no second pass). New optional source key `"quoting": false` stores quote characters as text. The stray-quote example now exits 1 with count 2. Side effect: a quoted field that really spans lines also fails the check. Such a file cannot pass load as it stands.
+- Bug 2: only `*` in `source.path` is a pattern now. `[` and `?` in the path, and anything in the data root, are literal.
+- Bug 3: not changed, by her answer. Noted in the README.
+- Bug 4: an encoding that is not a text encoding, and a `.zip` that is not a zip, each give one line and exit 2.
+- Bug 5: the parse-error message gives the line in the file at fault.
+- Blank lines at the end of a file are ignored. A blank line followed by a row is still a bad row.
+- The wrong comment at `load.py` about hashing is fixed. The other smaller items above are not changed.
+
+Evidence: `python -m unittest discover tests` runs 40 tests, OK (9 new, one per fix; the spanning-field test now expects exit 1). `selftest` prints `PASS load`. HCRIS FY2023 rerun: exit 0, NMRC 19,574,053, RPT 6,109, ALPHA 3,778,351, 0 bad rows, all nine checks pass. `tests/large_file_check.py` was not rerun after the fixes. The HCRIS config does not set `quoting`.
+
 **Where to pick up**
 
-1. Lauren answers the four questions in `STATUS.md`. Bugs 1 and 3 depend on them.
-2. Fix the bugs, on this branch or as a new chunk (her call), then a fresh check of the fixes.
-3. Lauren runs `python -m data_prepper selftest` on the remote desktop. That is the first test on Python 3.13 and SQLite 3.45.3.
-4. Merge after her review. Chunk 007 follows.
+1. A fresh check of the fixes (the builder of the fixes has not had them checked).
+2. Decide whether HCRIS should set `"quoting": false`. FY2023 has no quote characters; other years were not looked at.
+4. Lauren runs `python -m data_prepper selftest` on the remote desktop. That is the first test on Python 3.13 and SQLite 3.45.3.
+5. Merge after her review. Chunk 007 follows.

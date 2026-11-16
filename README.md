@@ -53,6 +53,10 @@ python tests/large_file_check.py
 - `--runs` is where run folders go. Default: `runs/` in the current folder. Each run makes `runs/<dataset>/<run id>/` with `work.db`, `reports/`, and `out/`.
 - Exit codes: 0 success, 1 a check with severity error failed (the report is written first), 2 bad config or bad arguments.
 - The load report is `reports/01-load.json`: files with size and SHA-256, rows read, rows loaded, rows with the wrong number of fields. Those rows go to `badrows_<table>` in `work.db`.
+- The report has three checks per table, all severity error: no rows with the wrong number of fields, rows read = rows loaded + rows bad, and lines in the files = rows read. The last one fails when a quote swallows line breaks, so a file with a quoted field that really does span lines fails it too.
+- `"quoting": false` in a table's `source` turns quote handling off, so quote characters are stored as text. Default is true.
+- Blank lines at the end of a file are ignored. A blank line anywhere else is a bad row.
+- `_file` is the bare file name (`<zip name>:<member>` for a zip member), so two files with the same name in different folders look the same.
 - `selftest` builds a small made-up dataset in a temp folder and checks the load stage against known answers. It needs no data files.
 - `tests/large_file_check.py` is not part of the normal test run. It makes 200 MB and 1 GB made-up files, so it needs Windows, a few minutes, and about 1.5 GB of temp disk.
 
