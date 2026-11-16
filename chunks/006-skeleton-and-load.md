@@ -164,11 +164,12 @@ Her answers: fix on this branch before merge; for stray quotes, both a check and
 - Blank lines at the end of a file are ignored. A blank line followed by a row is still a bad row.
 - The wrong comment at `load.py` about hashing is fixed. The other smaller items above are not changed.
 
-Evidence: `python -m unittest discover tests` runs 40 tests, OK (9 new, one per fix; the spanning-field test now expects exit 1). `selftest` prints `PASS load`. HCRIS FY2023 rerun: exit 0, NMRC 19,574,053, RPT 6,109, ALPHA 3,778,351, 0 bad rows, all nine checks pass. `tests/large_file_check.py` was not rerun after the fixes. The HCRIS config does not set `quoting`.
+Evidence: `python -m unittest discover tests` runs 40 tests, OK (9 new, one per fix; the spanning-field test now expects exit 1). `selftest` prints `PASS load`. HCRIS FY2023 rerun: exit 0, NMRC 19,574,053, RPT 6,109, ALPHA 3,778,351, 0 bad rows, all nine checks pass. `tests/large_file_check.py` was not rerun after the fixes.
+
+The HCRIS config sets `"quoting": false` on all three tables (Lauren's answer, 2026-11-16). None of the 18 files for FY2020 to FY2025 in the daita copy has a quote character. FY2023 rerun with it: exit 0, same counts, all nine checks pass. With quoting off, a quoted value with a comma inside would land in `badrows` instead of loading.
 
 **Where to pick up**
 
 1. A fresh check of the fixes (the builder of the fixes has not had them checked).
-2. Decide whether HCRIS should set `"quoting": false`. FY2023 has no quote characters; other years were not looked at.
-4. Lauren runs `python -m data_prepper selftest` on the remote desktop. That is the first test on Python 3.13 and SQLite 3.45.3.
-5. Merge after her review. Chunk 007 follows.
+3. Lauren runs `python -m data_prepper selftest` on the remote desktop. That is the first test on Python 3.13 and SQLite 3.45.3.
+4. Merge after her review. Chunk 007 follows.
