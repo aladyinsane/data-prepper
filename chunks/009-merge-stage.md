@@ -22,11 +22,11 @@
 ```
 
 - `left`, `right`: table names from `tables`. Any table can be a right side; there is no separate "supplemental" kind.
-- `on`: column names that exist under the same name on both sides. If the names differ, a transform rule in the model stage renames one first.
+- `on`: the join columns. Either a list of names that are the same on both sides (`["clinic_id"]`), or, when the names differ, an object mapping each left column to its right column (`{"clinic_id": "site_id", "year": "fiscal_year"}`). The result keeps the left side's names; the right side's join columns are not brought over.
 - `expect`: `many_to_one` or `one_to_one`. Nothing else in version 1. A many-to-many join is not supported.
 - `columns`: optional. The right-side columns to bring over. Default: every right column except the `on` columns, `_file`, and `_row`.
 - `min_match_rate`: optional, between 0 and 1.
-- Config errors (exit code 2, before anything runs): an unknown table or column, an `expect` value that isn't one of the two, or a brought-over column whose name already exists on the left.
+- Config errors (exit code 2, before anything runs): an unknown table or column (on either side of `on`), an `expect` value that isn't one of the two, or a brought-over column whose name already exists on the left.
 
 **How a join runs.** Entries run in the order listed. The first join on a left table reads `model_<left>` and writes `merged_<left>`; later joins on the same left table read and replace `merged_<left>`. The right side is always `model_<right>`.
 
@@ -50,13 +50,13 @@ After all joins, if any error check failed, write the report and exit with code 
 **HCRIS.** One join: NMRC (left) to RPT (right) on the report record number, `many_to_one`, bringing over the provider number and the fiscal year begin and end dates, `min_match_rate` 1.0. Use the column names already in `datasets/hcris/dataset.json`.
 
 - **Done when:**
-  - [ ] On made-up data, each of these gives exactly the expected table and report: a clean many-to-one join; unmatched left rows; null keys on the left; unused right rows; two joins in a row on the same left table.
+  - [ ] On made-up data, each of these gives exactly the expected table and report: a clean many-to-one join; a join where the column names differ between the two sides; unmatched left rows; null keys on the left; unused right rows; two joins in a row on the same left table.
   - [ ] On made-up data, each of these stops with the right failed check and no `merged_` table written for that join: a duplicate key on the right; a `one_to_one` join with a duplicate on the left; an integer key on one side and a text key on the other; a match rate under the minimum.
   - [ ] Each kind of config error gives a one-line message and exit code 2.
   - [ ] HCRIS FY2023 runs load through merge from one command. `merged_nmrc` has 19,574,053 rows, the match rate is 1.0, and 0 rows are unmatched. These equal the numbers in the ADR's benchmark. If they don't, stop and say so.
   - [ ] Seconds taken for the HCRIS join is in the Handoff.
   - [ ] `python -m unittest discover tests` and `python -m data_prepper selftest` both pass, with merge added to selftest.
-- **Out of scope:** inner, right, or full joins. Many-to-many joins. Fuzzy or approximate matching. Joins on columns with different names. Provider matching across releases (chunks 002 and 003).
+- **Out of scope:** inner, right, or full joins. Many-to-many joins. Fuzzy or approximate matching. Provider matching across releases (chunks 002 and 003).
 
 ## Handoff
 
