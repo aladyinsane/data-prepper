@@ -145,6 +145,46 @@ class Load(Case):
         self.assertEqual(self.report()["tables"]["t1"]["rows_read"], 2)
         self.assertEqual(self.failed_checks(), [("t1: lines in the files = rows read", 2)])
 
+    def test_stray_quote_on_the_last_line_fails_the_lines_check(self):
+        self.write("in.csv", 'a,b\n1,x\n2,"y\n')
+        self.write_config(one_table(src("in.csv")))
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.failed_checks(), [("t1: lines in the files = rows read", 1)])
+
+    def test_blank_line_bad_rows_are_written_in_batches(self):
+        from data_prepper import load
+
+        old = load.BATCH
+        load.BATCH = 10
+        self.addCleanup(setattr, load, "BATCH", old)
+        self.write("in.csv", "a,b\n" + "1,2\n\n\n" * 25 + "\n\n")
+        self.write_config(one_table(src("in.csv")))
+        self.assertEqual(self.run_cli()[0], 1)
+        t = self.report()["tables"]["t1"]
+        # 24 pairs of blank lines sit between rows (bad); the four after the last row are ignored
+        self.assertEqual((t["rows_read"], t["rows_loaded"], t["rows_bad"]), (73, 25, 48))
+        self.assertEqual(self.query("select count(*), min(_row), max(_row) from badrows_t1"), [(48, 3, 73)])
+        self.assertEqual(self.failed_checks(), [("t1: no rows with the wrong number of fields", 48)])
+
+    def test_encoding_undefined_is_a_config_error(self):
+        self.write("in.csv", "a,b\n1,2\n")
+        self.write_config(one_table(src("in.csv", encoding="undefined")))
+        self.assert_exit2_one_line("tables.t1.source.encoding")
+
+    def test_damaged_zip_member_is_a_config_error(self):
+        import zipfile
+
+        p = self.folder / "in.zip"
+        with zipfile.ZipFile(p, "w", zipfile.ZIP_STORED) as z:
+            z.writestr("m.csv", "1,2\n3,4\n")
+        b = bytearray(p.read_bytes())
+        i = bytes(b).index(b"1,2")
+        b[i] = ord("9")
+        p.write_bytes(bytes(b))
+        self.write_config(one_table(src("in.zip", header=False)))
+        self.assert_exit2_one_line("the zip is damaged")
+
     def test_quoting_off_keeps_quotes_as_text(self):
         self.write("in.csv", 'a,b\n1,x\n2,"y\n3,z\n4,"w"\n')
         self.write_config(one_table(src("in.csv", quoting=False)))

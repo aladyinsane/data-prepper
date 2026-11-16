@@ -1,6 +1,6 @@
 # 006: Package skeleton and the load stage
 
-- **Status:** Built, PR open, qa-peer check done, bugs fixed on the branch, fresh check of the fixes owed
+- **Status:** Built, PR open, checked twice by qa-peer, bugs fixed on the branch, waiting on Lauren's review
 - **Who:** agent (a cheaper model is fine; the design is already decided)
 - **Goal:** one command loads a dataset's source files into a working SQLite database and writes a load report.
 - **Inputs:**
@@ -168,8 +168,24 @@ Evidence: `python -m unittest discover tests` runs 40 tests, OK (9 new, one per 
 
 The HCRIS config sets `"quoting": false` on all three tables (Lauren's answer, 2026-11-16). None of the 18 files for FY2020 to FY2025 in the daita copy has a quote character. FY2023 rerun with it: exit 0, same counts, all nine checks pass. With quoting off, a quoted value with a comma inside would land in `badrows` instead of loading.
 
+**Second qa-peer check, 2026-11-16 (of the fix commit `cec606f`, fresh agent)**
+
+Verdict: pass with fixes. Every fix above held on its own runs, the large-file check passed (53.3 and 53.2 MB), and HCRIS matched again. It found three problems the fixes had brought in, now fixed:
+
+- A stray quote on the last line of a file passed every check, because it swallows only the final line break. Now the lines check also fails when the last record has a value ending in a line break.
+- Bad rows from blank lines were not written in batches of 50,000, and the list of blank lines at the end of a file grew with their number. Both are now flat in memory.
+- Also fixed from its smaller items: `"encoding": "undefined"` and a zip member with a bad CRC give one line and exit 2.
+
+Evidence after these: 44 unit tests OK (4 new), `selftest` prints `PASS load`, HCRIS FY2023 exit 0 with the same counts and nine passing checks, large-file check PASS (53.2 MB and 54.2 MB, difference 0.9). These last changes are covered by the new tests, not by a third agent check.
+
+Known and not fixed:
+
+- A stray quote on the last line of a file that has no final line break still passes: the value is stored without its quote and nothing flags it.
+- The parse-error line is where the 16 MB limit was hit, which can be far below the stray quote that caused it.
+- In a one-column table a blank line is also an empty value. Blank lines at the end are dropped; one in the middle is a bad row.
+
 **Where to pick up**
 
-1. A fresh check of the fixes (the builder of the fixes has not had them checked).
-3. Lauren runs `python -m data_prepper selftest` on the remote desktop. That is the first test on Python 3.13 and SQLite 3.45.3.
-4. Merge after her review. Chunk 007 follows.
+1. Lauren reviews the PR.
+2. Lauren runs `python -m data_prepper selftest` on the remote desktop. That is the first test on Python 3.13 and SQLite 3.45.3.
+3. Merge after her review. Chunk 007 follows.

@@ -4,13 +4,14 @@ Current state only. Git history records what happened.
 
 ## Waiting on Lauren
 
-- Review and merge the PR for chunk 006 (branch `feat/006-skeleton-and-load`). Not merged. Wait for the fresh check of the fixes first.
+- Review and merge the PR for chunk 006 (branch `feat/006-skeleton-and-load`). Not merged. It has been checked twice by qa-peer; the Handoff lists what was fixed and three known gaps left alone.
+- One-column tables: is an empty line at the end of a file a blank line to ignore (as now) or an empty value to keep? One line. No dataset on hand has one column.
 - After 006 is merged: run `python -m data_prepper selftest` on the remote desktop and report the output. This is the first run on Python 3.13 and SQLite 3.45.3.
 - Free disk on the remote desktop. From the folder you would work in, type `python -c "import shutil; print(round(shutil.disk_usage('.').free/1e9), 'GB free')"` and report the number only. Not blocking 006. HCRIS FY2023 alone made a 2.0 GB `work.db`.
 
 ## In progress
 
-- [006](chunks/006-skeleton-and-load.md): built, PR open. Checked by qa-peer on 2026-11-16: all "Done when" boxes hold, five bugs found on other inputs. Four are fixed on the branch and the fifth (`_file` bare names) stays by Lauren's answer. Pick up at: a fresh check of the fixes, then her review.
+- [006](chunks/006-skeleton-and-load.md): built, PR open. Checked by qa-peer on 2026-11-16: all "Done when" boxes hold, five bugs found on other inputs. Four are fixed on the branch and the fifth (`_file` bare names) stays by Lauren's answer. A second qa-peer check passed the fixes and found three new problems, also fixed and covered by tests. HCRIS has quoting off. Pick up at: Lauren's review of the PR.
 
 ## Ready
 

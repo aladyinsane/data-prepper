@@ -89,7 +89,7 @@ def _load_one(con, table, path, member, stats):
     def _copy(reader):
         prev = 0  # last line number used by the previous record
         rows = 0  # records from this file, header and blank lines at the end left out
-        blanks = []  # start lines of blank lines not yet followed by a row
+        blank_start, blank_n = 0, 0  # a run of blank lines not yet followed by a row
         if table.source.header:
             head = next(reader, None)
             prev = reader.line_num
@@ -99,18 +99,28 @@ def _load_one(con, table, path, member, stats):
                     f"file has {head}; config has {cols}"
                 )
         good, bad = [], []
+        rec = None
+
+        def add_bad(row):
+            bad.append(row)
+            stats["rows_bad"] += 1
+            if len(bad) >= BATCH:
+                con.executemany(bad_sql, bad)
+                bad.clear()
+
         for rec in reader:
             start = prev + 1  # a quoted field can span lines; _row is where the row starts
             prev = reader.line_num
             if not rec:  # a blank line: ignored at the end of the file, a bad row anywhere else
-                blanks.append(start)
+                if not blank_n:
+                    blank_start = start
+                blank_n += 1
                 continue
-            for b in blanks:
-                bad.append((label, b, 0, ""))
-            rows += len(blanks) + 1
-            stats["rows_read"] += len(blanks) + 1
-            stats["rows_bad"] += len(blanks)
-            blanks = []
+            for b in range(blank_start, blank_start + blank_n):
+                add_bad((label, b, 0, ""))
+            rows += blank_n + 1
+            stats["rows_read"] += blank_n + 1
+            blank_n = 0
             if len(rec) == n:
                 good.append((start, label, *rec))
                 if len(good) >= BATCH:
@@ -118,11 +128,7 @@ def _load_one(con, table, path, member, stats):
                     stats["rows_loaded"] += len(good)
                     good = []
             else:
-                bad.append((label, start, len(rec), delim.join(rec)))
-                stats["rows_bad"] += 1
-                if len(bad) >= BATCH:
-                    con.executemany(bad_sql, bad)
-                    bad = []
+                add_bad((label, start, len(rec), delim.join(rec)))
         if good:
             con.executemany(good_sql, good)
             stats["rows_loaded"] += len(good)
@@ -130,8 +136,12 @@ def _load_one(con, table, path, member, stats):
             con.executemany(bad_sql, bad)
         con.commit()
         # Lines in the file against records read. They differ when a quote swallowed line breaks.
-        lines = reader.line_num - len(blanks) - (1 if table.source.header else 0)
-        stats["line_diff"] += abs(lines - rows)
+        lines = reader.line_num - blank_n - (1 if table.source.header else 0)
+        diff = abs(lines - rows)
+        # A stray quote on the last line swallows only the final line break, so the counts agree.
+        if not diff and rec and any(v.endswith(("\n", "\r")) for v in rec):
+            diff = 1
+        stats["line_diff"] += diff
 
     try:
         if member:
@@ -145,6 +155,8 @@ def _load_one(con, table, path, member, stats):
             f"table {table.name}: {label} is not valid {table.source.encoding}: {e.reason} at byte {e.start}; "
             "check source.encoding"
         ) from None
+    except zipfile.BadZipFile as e:
+        raise ConfigError(f"table {table.name}: {label}: the zip is damaged: {e}") from None
     except csv.Error as e:
         raise ConfigError(f"table {table.name}: {label}: cannot parse near line {at['reader'].line_num}: {e}") from None
 

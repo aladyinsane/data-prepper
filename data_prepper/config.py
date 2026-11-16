@@ -140,7 +140,7 @@ def load_config(folder):
         encoding = check_str(sraw, "encoding", swhere)
         try:
             "".encode(encoding)  # also turns down codecs that are not text encodings, like base64
-        except LookupError:
+        except (LookupError, ValueError):
             fail(f"{swhere}.encoding", f"unknown encoding {encoding!r}")
         quoting = sraw.get("quoting", True)
         if not isinstance(quoting, bool):
