@@ -44,7 +44,7 @@ select visit_id, paid_amount from visits where paid_amount < 0;
 1. `010_nmrc_has_report.sql` (error): NMRC rows whose report record number is not in RPT.
 2. `020_fy_dates_in_order.sql` (error): RPT rows where the fiscal year end date is not after the begin date.
 
-No HCRIS transform in this chunk. Which reports to keep and how providers match across releases are Lauren's rules and depend on chunks 001 to 003. Transforms are tested on made-up data only.
+No HCRIS transform in this chunk. Which reports to keep and how providers match across releases are Lauren's rules and belong to the `provider-changes` repo, not this one. Transforms are tested on made-up data only.
 
 - **Done when:**
   - [ ] On made-up data: a passing check, a failing warn check (run goes on, exit 0), and a failing error check (report written with the failing rows, exit 1) each behave as described.
@@ -55,7 +55,7 @@ No HCRIS transform in this chunk. Which reports to keep and how providers match 
   - [ ] Running the same input twice gives the same `model_` tables (compare all rows, sorted) and the same report apart from times and run id.
   - [ ] HCRIS FY2023 runs through load, clean, and model from one command. The results of the two HCRIS checks are in the Handoff with their counts. If either fails, report it; don't change the rule or the data to make it pass.
   - [ ] `python -m unittest discover tests` and `python -m data_prepper selftest` both pass, with model added to selftest.
-- **Out of scope:** HCRIS business rules beyond the two checks. Provider matching (chunks 002 and 003). Merge and summarize. Rules written in Python.
+- **Out of scope:** HCRIS business rules beyond the two checks. Provider matching (the `provider-changes` repo). Merge and summarize. Rules written in Python.
 
 ## Handoff
 

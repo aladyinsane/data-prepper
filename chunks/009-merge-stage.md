@@ -56,7 +56,7 @@ After all joins, if any error check failed, write the report and exit with code 
   - [ ] HCRIS FY2023 runs load through merge from one command. `merged_nmrc` has 19,574,053 rows, the match rate is 1.0, and 0 rows are unmatched. These equal the numbers in the ADR's benchmark. If they don't, stop and say so.
   - [ ] Seconds taken for the HCRIS join is in the Handoff.
   - [ ] `python -m unittest discover tests` and `python -m data_prepper selftest` both pass, with merge added to selftest.
-- **Out of scope:** inner, right, or full joins. Many-to-many joins. Fuzzy or approximate matching. Provider matching across releases (chunks 002 and 003).
+- **Out of scope:** inner, right, or full joins. Many-to-many joins. Fuzzy or approximate matching. Provider matching across releases (the `provider-changes` repo).
 
 ## Handoff
 

@@ -14,7 +14,6 @@ Current state only. Git history records what happened.
 
 ## Ready
 
-- [001](chunks/001-current-process.md): describe the current HCRIS refresh. Lauren's call at triage, 2026-11-14: this is the next chunk.
 - [006](chunks/006-skeleton-and-load.md): package skeleton and the load stage. Next build chunk. A cheaper model is fine.
 - After 006 is built: run the first formal qa-peer trial on it, see C:\dev\dev-team\STATUS.md. Then Lauren runs `python -m data_prepper selftest` on the remote desktop.
 - [007](chunks/007-clean-stage.md): the clean stage. After 006 is merged.
@@ -23,9 +22,6 @@ Current state only. Git history records what happened.
 - [010](chunks/010-summarize-stage.md): the summarize stage. After 009 is merged. Finishes "HCRIS runs through all five stages from one command".
 - [011](chunks/011-nppes-by-config.md): NPPES by config only. After 010 is merged. Needs Lauren to download the public NPPES file first.
 - [012](chunks/012-remote-desktop-trial.md): trial on the remote desktop. Lauren's, after 010 is merged.
-- Held until the Model stage needs HCRIS rules (HCRIS test case work, see `docs/test-cases/hcris-provider-identity.md`):
-  - [002](chunks/002-ccn-change-sources.md): find public sources that link old and new CCNs.
-  - [003](chunks/003-ccn-changes-in-hcris.md): find how CCN changes show up across HCRIS years.
 
 ## Done
 
