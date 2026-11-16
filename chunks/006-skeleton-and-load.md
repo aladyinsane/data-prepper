@@ -1,6 +1,6 @@
 # 006: Package skeleton and the load stage
 
-- **Status:** Ready
+- **Status:** Built, PR open, fresh qa-peer check owed
 - **Who:** agent (a cheaper model is fine; the design is already decided)
 - **Goal:** one command loads a dataset's source files into a working SQLite database and writes a load report.
 - **Inputs:**
@@ -81,17 +81,65 @@
 - Passes when the 1 GB peak is within 50 MB of the 200 MB peak. Deletes its files afterwards.
 
 - **Done when:**
-  - [ ] `python -m data_prepper run datasets/hcris --data-root <the fy2023 folder>` finishes with exit code 0 and writes `reports/01-load.json`.
-  - [ ] In that report, `rows_loaded` for NMRC is 19,574,053 and for RPT is 6,109, and each equals a line count of the file made a different way (not through `load.py`).
-  - [ ] The reported SHA-256 of the zip equals the one from `certutil -hashfile <zip> SHA256`.
-  - [ ] `python -m unittest discover tests` passes. Tests cover: a good config, each kind of bad config (exit code 2, one-line message), header mismatch, a file inside a zip, several files matching one pattern, rows with the wrong field count, and rows read = rows loaded + rows bad.
-  - [ ] `python tests/large_file_check.py` passes, and both peak numbers are written in the Handoff.
-  - [ ] `python -m data_prepper selftest` prints PASS for load and exits 0.
-  - [ ] No import in `data_prepper/` from outside the standard library (show the grep).
+  - [x] `python -m data_prepper run datasets/hcris --data-root <the fy2023 folder>` finishes with exit code 0 and writes `reports/01-load.json`.
+  - [x] In that report, `rows_loaded` for NMRC is 19,574,053 and for RPT is 6,109, and each equals a line count of the file made a different way (not through `load.py`).
+  - [x] The reported SHA-256 of the zip equals the one from `certutil -hashfile <zip> SHA256`.
+  - [x] `python -m unittest discover tests` passes. Tests cover: a good config, each kind of bad config (exit code 2, one-line message), header mismatch, a file inside a zip, several files matching one pattern, rows with the wrong field count, and rows read = rows loaded + rows bad.
+  - [x] `python tests/large_file_check.py` passes, and both peak numbers are written in the Handoff.
+  - [x] `python -m data_prepper selftest` prints PASS for load and exits 0.
+  - [x] No import in `data_prepper/` from outside the standard library (show the grep).
 - **Out of scope:** the clean, model, merge, and summarize stages. Reading Excel, SAS datasets, or SQL Server. Any speed tuning past what is written here. Changing the ADR.
 
 ## Handoff
 
-(not started)
+Built on branch `feat/006-skeleton-and-load`. All seven "Done when" boxes are met. Nothing was loosened. The ADR was not changed and nothing in it blocked the build. Not yet checked by a fresh agent.
+
+Run on the laptop: Python 3.14.6, SQLite 3.50.4. Python 3.13 and SQLite 3.45.3 were not available, so they are untested. Tests and selftest also pass on Python 3.12.15 (SQLite 3.53.1), so nothing newer than 3.12 is used.
+
+**Evidence, one per box**
+
+1. HCRIS run. Command: `python -m data_prepper run datasets/hcris --data-root C:\dev\daita\data\bronze\cms-hcris-hospital-2552-10\files\20260928T081652Z_fy2023`. Exit code 0, about 30 s, wrote `reports/01-load.json`. `work.db` was 2.0 GB.
+2. Rows loaded, against a line count made without `load.py` or `csv`. I extracted the zip with .NET `ZipFile` and counted two ways: `cmd find /c /v ""` and `tr -cd '\n' | wc -c`. Every file ends in a newline, so lines = rows (the files have no header).
+
+   | Table | `rows_loaded` | `find /c /v ""` | `tr`/`wc` newlines |
+   |---|---|---|---|
+   | NMRC | 19,574,053 | 19,574,053 | 19,574,053 |
+   | RPT | 6,109 | 6,109 | 6,109 |
+   | ALPHA | 3,778,351 | 3,778,351 | 3,778,351 |
+
+   `rows_bad` was 0 for all three.
+3. SHA-256 of the zip. Report and `certutil -hashfile <zip> SHA256` both give `adf2ed822f8da05d9c73ecc23bf6dcf88faee052028ee3a978e9f6628235b42b`.
+4. `python -m unittest discover tests`: 31 tests, OK. They cover a good config, each kind of bad config (missing key, unknown key, wrong type, bad JSON, plus a repeated key and a missing file; exit 2 and one line on stderr each), header mismatch, a file inside a zip, several files matching one pattern, rows with the wrong field count, and rows read = rows loaded + rows bad (across several batches). They also cover the pragmas, `_row` for a quoted field that spans lines, tab delimiter and non-UTF-8 encoding, and selftest.
+5. `python tests/large_file_check.py`: PASS.
+
+   | File | Rows (loaded = written) | Peak memory |
+   |---|---|---|
+   | about 200 MB (208 MB) | 2,500,000 | 53.4 MB |
+   | about 1 GB (1004 MB) | 12,000,000 | 54.1 MB |
+
+   Difference 0.6 MB, limit 50. Peak is `PeakWorkingSetSize` from `GetProcessMemoryInfo`, read inside a fresh process for each file.
+6. `python -m data_prepper selftest` prints `PASS load` and exits 0.
+7. Imports in `data_prepper/`, from `grep -rnE "^\s*(import|from)\s" data_prepper`: argparse, codecs, contextlib, csv, dataclasses, datetime, fnmatch, glob, hashlib, io, json, pathlib, re, sqlite3, sys, tempfile, time, zipfile, and relative imports inside the package. All standard library.
+
+**Column names.** From `HCRIS_TABLE_DESCRIPTIONS _AND_SQL.txt` in `hospital2010-documentation.zip`, in that file's order, and checked against the first rows of each FY2023 file (RPT has 18 fields per row, NMRC and ALPHA 5). I kept CMS's upper-case names.
+
+**Judgment calls (change any you disagree with)**
+
+- Column `type` and `format` in `datasets/hcris/dataset.json` follow the CMS table definitions (dates `%m/%d/%Y`). Nothing reads them until the clean chunk. Only RPT has a `key` (`RPT_REC_NUM`, which CMS documents as its primary key). NMRC and ALPHA have none, since no key is documented for them.
+- The config accepts `model`, `merge`, and `summarize` as top-level keys and does not check them yet, so the ADR's example config loads. Any other unknown key is an error.
+- The config requires `path`, `delimiter`, `header`, and `encoding` on every source. Table and column names must be letters, digits, underscore, starting with a letter, so they cannot clash with `_row` and `_file`.
+- Exit 2 (no traceback, one line) also covers: a header that does not match the config (both lists shown), no file matching `source.path`, no zip member matching `source.member`, a file that is not valid in the stated encoding, and a field over 16 MB (a stray quote).
+- `_file` is the file name, or `<zip name>:<member>` for a zip member. The ZIP is therefore stored on every row, which costs disk. `_row` is the line where the record starts.
+- Beyond the one check the chunk lists, the report has a second error check per table, "rows read = rows loaded + rows bad", so the reconciliation shows in the report.
+- The HCRIS config uses `HOSP10FY*.ZIP` with `HOSP10_*_nmrc.csv` and so on, so it works for any year's folder. Pointing `--data-root` at a folder with several years would load them all into one table, with `_file` telling them apart.
+- The zip is hashed once per table that reads from it (three times for HCRIS, 136 MB each; not timed). Not worth changing yet.
+- Run id collisions: if a second run starts in the same second, it waits until the next one.
+- Added `.gitignore` with `__pycache__/` as well as `runs/`, plus `data_prepper/__init__.py`.
+
+**Where to pick up**
+
+1. Run the first formal `qa-peer` trial on this chunk (see `C:\dev\dev-team\STATUS.md`).
+2. Lauren runs `python -m data_prepper selftest` on the remote desktop. That is the first test on Python 3.13 and SQLite 3.45.3.
+3. Merge after the check and her review. Chunk 007 follows.
 
 After this chunk is checked, two things follow, both listed in `STATUS.md`: Lauren runs `selftest` on the remote desktop, and the first formal `qa-peer` trial runs on this chunk.

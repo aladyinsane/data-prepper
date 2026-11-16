@@ -1,0 +1,50 @@
+{
+  "dataset": "hcris",
+  "note": "CMS HCRIS hospital 2552-10. Column names and order from HCRIS_TABLE_DESCRIPTIONS _AND_SQL.txt in hospital2010-documentation.zip, checked against the first rows of each FY2023 file. The files have no header row. Types follow the CMS table definitions. Other sections come in later chunks.",
+  "tables": {
+    "rpt": {
+      "source": {"path": "HOSP10FY*.ZIP", "member": "HOSP10_*_rpt.csv", "delimiter": ",", "header": false, "encoding": "utf-8"},
+      "columns": {
+        "RPT_REC_NUM":        {"type": "number", "required": true},
+        "PRVDR_CTRL_TYPE_CD": {"type": "text"},
+        "PRVDR_NUM":          {"type": "text", "required": true},
+        "NPI":                {"type": "number"},
+        "RPT_STUS_CD":        {"type": "text", "required": true},
+        "FY_BGN_DT":          {"type": "date", "format": "%m/%d/%Y"},
+        "FY_END_DT":          {"type": "date", "format": "%m/%d/%Y"},
+        "PROC_DT":            {"type": "date", "format": "%m/%d/%Y"},
+        "INITL_RPT_SW":       {"type": "text"},
+        "LAST_RPT_SW":        {"type": "text"},
+        "TRNSMTL_NUM":        {"type": "text"},
+        "FI_NUM":             {"type": "text"},
+        "ADR_VNDR_CD":        {"type": "text"},
+        "FI_CREAT_DT":        {"type": "date", "format": "%m/%d/%Y"},
+        "UTIL_CD":            {"type": "text"},
+        "NPR_DT":             {"type": "date", "format": "%m/%d/%Y"},
+        "SPEC_IND":           {"type": "text"},
+        "FI_RCPT_DT":         {"type": "date", "format": "%m/%d/%Y"}
+      },
+      "key": ["RPT_REC_NUM"]
+    },
+    "nmrc": {
+      "source": {"path": "HOSP10FY*.ZIP", "member": "HOSP10_*_nmrc.csv", "delimiter": ",", "header": false, "encoding": "utf-8"},
+      "columns": {
+        "RPT_REC_NUM": {"type": "number", "required": true},
+        "WKSHT_CD":    {"type": "text", "required": true},
+        "LINE_NUM":    {"type": "text", "required": true},
+        "CLMN_NUM":    {"type": "text", "required": true},
+        "ITM_VAL_NUM": {"type": "number", "required": true}
+      }
+    },
+    "alpha": {
+      "source": {"path": "HOSP10FY*.ZIP", "member": "HOSP10_*_alpha.csv", "delimiter": ",", "header": false, "encoding": "utf-8"},
+      "columns": {
+        "RPT_REC_NUM":      {"type": "number", "required": true},
+        "WKSHT_CD":         {"type": "text", "required": true},
+        "LINE_NUM":         {"type": "text", "required": true},
+        "CLMN_NUM":         {"type": "text", "required": true},
+        "ALPHNMRC_ITM_TXT": {"type": "text", "required": true}
+      }
+    }
+  }
+}
