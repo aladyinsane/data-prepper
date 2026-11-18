@@ -15,15 +15,15 @@ Current state only. Git history records what happened.
 
 ## Ready
 
-- [001](chunks/001-current-process.md): describe the current HCRIS refresh. Lauren's call at triage, 2026-11-14: this is the next chunk.
 - [007](chunks/007-clean-stage.md): the clean stage. After 006 is merged.
 - [008](chunks/008-model-stage.md): the model stage. After 007 is merged.
-- Not written as chunks yet: merge, summarize, NPPES by config only, and a large-file trial on the remote desktop.
-- Held until the Model stage needs HCRIS rules (HCRIS test case work, see `docs/test-cases/hcris-provider-identity.md`):
-  - [002](chunks/002-ccn-change-sources.md): find public sources that link old and new CCNs.
-  - [003](chunks/003-ccn-changes-in-hcris.md): find how CCN changes show up across HCRIS years.
+- [009](chunks/009-merge-stage.md): the merge stage. After 008 is merged.
+- [010](chunks/010-summarize-stage.md): the summarize stage. After 009 is merged. Finishes "HCRIS runs through all five stages from one command".
+- [011](chunks/011-nppes-by-config.md): NPPES by config only. After 010 is merged. Needs Lauren to download the public NPPES file first.
+- [012](chunks/012-remote-desktop-trial.md): trial on the remote desktop. Lauren's, after 010 is merged.
 
 ## Done
 
 - [005](chunks/005-adr-package-design.md): ADR-0001 accepted and merged.
-- Chunk files 006 to 008 written and merged.
+- Chunk files 006 to 012 written and merged.
+- Provider identifier work (old chunks 001 to 003) moved to `C:\dev\provider-changes`.

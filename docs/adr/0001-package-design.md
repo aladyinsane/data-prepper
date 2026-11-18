@@ -157,7 +157,7 @@ Not used: pandas, numpy, pyodbc, SAS, openpyxl, YAML.
 
 1. **Skeleton and load.** Package folder, command line, config reading with clear errors for a bad config, the run folder, and the load stage with its report. Runs on HCRIS FY2023 straight from the zip. Includes `selftest` for the stages that exist. Checked by: row counts match an independent line count of the files; a made-up file larger than a set memory cap loads while peak memory stays under the cap; Lauren runs `selftest` on the remote desktop.
 2. **Clean.** Types, required columns, duplicates, and keys, with the reject table and report. Checked by: a made-up file with known bad rows produces exactly the expected rejects and reasons; HCRIS RPT and NMRC pass with counts that add up (rows in = rows out + rejects).
-3. **Model.** The rule runner for check and transform rules, with its report, and two or three real HCRIS rules that don't depend on chunks 002 and 003. Checked by: a rule known to fail stops the run with the failing rows in the report; rules run in order; the same input gives the same output twice.
+3. **Model.** The rule runner for check and transform rules, with its report, and two or three real HCRIS rules that don't depend on provider matching (moved to the `provider-changes` repo on 2026-11-16). Checked by: a rule known to fail stops the run with the failing rows in the report; rules run in order; the same input gives the same output twice.
 
 Merge, summarize, NPPES, and the large-file trial on the remote desktop follow as later chunks. Build chunk 1 is the one the first `qa-peer` trial runs on (see `C:\dev\dev-team\STATUS.md`).
 

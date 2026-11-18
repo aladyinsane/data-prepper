@@ -4,6 +4,8 @@ A small Python package, plus per-dataset config, for the stages Lauren keeps reb
 
 `C:\dev\daita` is reference material for this project, not its starting point.
 
+Provider identifier tracking (CCN changes) started here as the HCRIS test case and moved to `C:\dev\provider-changes` on 2026-11-16. HCRIS stays here only as a plain dataset to run through the stages.
+
 ## Who it's for
 
 Lauren, for her own projects. Each project imports the package and supplies its own config and rules. Built at home on public data only. See `PROBLEM.md`.
