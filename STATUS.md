@@ -6,8 +6,6 @@ Current state only. Git history records what happened.
 
 - Review and merge PR #10 for chunk 006 (branch `feat/006-skeleton-and-load`). Not merged. The third qa-peer review's findings are fixed and rechecked; the Handoff has the details.
 - After 006 is merged: clone the repo on the remote desktop (it is public now) and run `python -m data_prepper selftest`, then report the output. This is the first run on Python 3.13 and SQLite 3.45.3.
-- Confirm one line: in a one-column table, a blank line in the middle of a file is also loaded as an empty value, the same as one at the end (my call, built that way).
-- Confirm one line: a bug in the code (for example bad SQL) shows a Python traceback and exits 1, instead of one line and exit 2. Disk and file problems still give one line and exit 2 (my call, built that way).
 
 ## In progress
 

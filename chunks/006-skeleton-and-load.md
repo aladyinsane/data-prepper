@@ -199,7 +199,7 @@ Fix both must-fix bugs before merge and fold in the smaller items. Strip a UTF-8
 - Dataset, table, and column names now have to match their pattern in full, so a trailing line break is a config error. Error messages escape line breaks, so stderr is always one line.
 - New test: `_row` restarts at 1 in each file with `header: false` across several files.
 - A UTF-8 byte order mark is dropped when `encoding` is UTF-8 (any spelling): the file is read as `utf-8-sig`. Tests for `header: true`, `header: false`, and a zip member. In the README.
-- One-column tables: every blank line is an empty value and is loaded, at the end of a file or in the middle. Judgment call: a blank line in the middle is treated the same as one at the end, since in a one-column file it can only mean an empty value. Listed for Lauren to confirm. Tables with two or more columns are unchanged.
+- One-column tables: every blank line is an empty value and is loaded, at the end of a file or in the middle. Judgment call: a blank line in the middle is treated the same as one at the end, since in a one-column file it can only mean an empty value. Lauren confirmed, 2026-11-20. Tables with two or more columns are unchanged.
 
 Evidence, same commands as above, Python 3.14.6, SQLite 3.50.4:
 
@@ -224,7 +224,7 @@ Verdict: pass with fixes. All seven items on the fix list held and all seven "Do
 Findings, and what was done:
 
 - Should fix, fixed: an encrypted zip member gave a traceback and exit 1. Now one line and exit 2, with a test.
-- Should fix, fixed: the catch-all for `sqlite3.Error` also hid code bugs (a SQL syntax error gave exit 2 and one line, like a config problem). Now only SQLite errors from the disk or file (full, I/O, cannot open, read-only, no permission, busy, locked, corrupt, not a database) give exit 2; any other SQLite error keeps its traceback. Two tests: disk full gives exit 2; a syntax error is raised. Judgment call: a bug shows a traceback (Python's exit 1) rather than being dressed up as a config error.
+- Should fix, fixed: the catch-all for `sqlite3.Error` also hid code bugs (a SQL syntax error gave exit 2 and one line, like a config problem). Now only SQLite errors from the disk or file (full, I/O, cannot open, read-only, no permission, busy, locked, corrupt, not a database) give exit 2; any other SQLite error keeps its traceback. Two tests: disk full gives exit 2; a syntax error is raised. Judgment call: a bug shows a traceback (Python's exit 1) rather than being dressed up as a config error. Lauren confirmed, 2026-11-20.
 - Nit, fixed: only "too many columns" from `CREATE TABLE` is reported as a column-count problem; other errors there go through the rule above.
 - Nit, fixed: the `cli.py` docstring now gives the wider meaning of exit 2.
 - Nit, left: with a non-UTF-8 encoding such as cp1252, a UTF-8 BOM is stored as three characters in the first value. The README limits BOM dropping to UTF-8. Added to the known gaps.
