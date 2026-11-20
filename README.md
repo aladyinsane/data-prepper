@@ -24,6 +24,9 @@ From the "Done when" list in `PROBLEM.md`, which is the source of truth:
 
 It has to run on Lauren's laptop and on a locked-down remote desktop, and it has to handle very large files. See "Constraints" in `PROBLEM.md` for the details.
 
+- Remote desktop: Python 3.13, SQLite 3.45.3, 203 GB free disk (Lauren, 2026-11-20). HCRIS FY2023 alone makes a 2.0 GB `work.db`.
+- The repo is public, so the remote desktop can clone it from GitHub.
+
 ## Key decisions
 
 From `PROBLEM.md` ("What the constraints mean for the design" and "Out of scope"):
@@ -36,3 +39,39 @@ From `PROBLEM.md` ("What the constraints mean for the design" and "Out of scope"
 - SQLite, through the standard library, is the engine. Config is one JSON file per dataset plus `.sql` rule files. See `docs/adr/0001-package-design.md`.
 
 Where things stand is in `STATUS.md`.
+
+## Usage
+
+Everything below was run on the laptop (Python 3.14.6, SQLite 3.50.4). It has not been run on the remote desktop yet.
+
+Only the load stage exists so far. Run these from the repo folder:
+
+```
+python -m data_prepper run <dataset folder> [--data-root <folder>] [--runs <folder>]
+python -m data_prepper selftest
+python -m unittest discover tests
+python tests/large_file_check.py
+```
+
+- `<dataset folder>` holds a `dataset.json`. `datasets/hcris` is the HCRIS one.
+- `--data-root` is the folder relative `source.path` values are resolved against. Default: the dataset folder.
+- `--runs` is where run folders go. Default: `runs/` in the current folder. Each run makes `runs/<dataset>/<run id>/` with `work.db`, `reports/`, and `out/`.
+- Exit codes: 0 success, 1 a check with severity error failed (the report is written first), 2 bad config, bad arguments, or a file or folder that cannot be read or written (for example a zip member packed with Deflate64 or encrypted, `--runs` pointing at a file, more columns than SQLite allows, or a full disk). Exit 2 prints one line on stderr. A bug in the code still shows a Python traceback.
+- The load report is `reports/01-load.json`: files with size and SHA-256, rows read, rows loaded, rows with the wrong number of fields. Those rows go to `badrows_<table>` in `work.db`. Rows loaded and rows bad are counted from the two tables after loading, not from the loop that inserts them.
+- The report has three checks per table, all severity error: no rows with the wrong number of fields, rows read = rows loaded + rows bad, and lines in the files = rows read. The last one fails when a quote swallows line breaks, so a file with a quoted field that really does span lines fails it too.
+- `"quoting": false` in a table's `source` turns quote handling off, so quote characters are stored as text. Default is true.
+- Blank lines at the end of a file are ignored. A blank line anywhere else is a bad row. In a one-column table a blank line is an empty value instead, at the end of a file or anywhere else, and is loaded.
+- With `"encoding": "utf-8"`, a UTF-8 byte order mark at the start of a file is dropped, so it never ends up in the first value or the header.
+- `_file` is the bare file name (`<zip name>:<member>` for a zip member), so two files with the same name in different folders look the same.
+- `selftest` builds a small made-up dataset in a temp folder and checks the load stage against known answers. It needs no data files.
+- `tests/large_file_check.py` is not part of the normal test run. It makes 200 MB and 1 GB made-up files, so it needs Windows, a few minutes, and about 1.5 GB of temp disk.
+
+Example, HCRIS FY2023 from the read-only daita copy:
+
+```
+python -m data_prepper run datasets/hcris --data-root C:\dev\daita\data\bronze\cms-hcris-hospital-2552-10\files\20260928T081652Z_fy2023
+```
+
+That took about 30 seconds and made a 2.0 GB `work.db`.
+
+Python 3.13 and SQLite 3.45.3 (the remote desktop) were not available here, so neither was tested. The unit tests and selftest also pass on Python 3.12.15, so nothing newer than 3.12 is in use.
