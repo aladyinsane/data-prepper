@@ -215,13 +215,24 @@ Listed under Ready in `STATUS.md` too.
 - A stray quote on the last line of a file that has no final line break still passes: the value is stored without its quote and nothing flags it.
 - The parse-error line is where the 16 MB field limit was hit, which can be far below the stray quote that caused it.
 - From the first check's smaller items: an exit 2 after the run folder is made leaves a `work.db` with no report; "at byte N" in the bad-encoding message is an offset in the decoder block, not the file; an empty file with a header reports "file has None"; `csv.field_size_limit` is set at import for the whole process.
+- From the fourth check: a UTF-8 BOM in a file declared as another encoding (cp1252, say) is stored in the first value with no flag.
 
-**Fourth qa-peer check (of the 2026-11-20 fixes)**
+**Fourth qa-peer check, 2026-11-20 (of commit `0ba49ab`, fresh agent)**
 
-Pending.
+Verdict: pass with fixes. All seven items on the fix list held and all seven "Done when" boxes passed on its own runs: 56 tests OK; selftest PASS; HCRIS exit 0 in 37 s with NMRC 19,574,053, RPT 6,109, ALPHA 3,778,351 matching a newline count streamed from the zip members, 9 of 9 checks; zip SHA-256 matched `certutil`; large-file PASS (54.4 MB and 54.0 MB); standard-library imports only. It ran the new row-count test against the old code and it failed there, as it should; it also removed each exit-2 fix, the BOM fix, and the one-column rule in turn and the matching test failed each time. `count(*)` on the 2.0 GB `work.db` took 1.2 s for NMRC. Not checked: Python 3.13, SQLite 3.45.3, a real disk-full error, a real Deflate64 zip from Windows (tests rewrite the method byte).
+
+Findings, and what was done:
+
+- Should fix, fixed: an encrypted zip member gave a traceback and exit 1. Now one line and exit 2, with a test.
+- Should fix, fixed: the catch-all for `sqlite3.Error` also hid code bugs (a SQL syntax error gave exit 2 and one line, like a config problem). Now only SQLite errors from the disk or file (full, I/O, cannot open, read-only, no permission, busy, locked, corrupt, not a database) give exit 2; any other SQLite error keeps its traceback. Two tests: disk full gives exit 2; a syntax error is raised. Judgment call: a bug shows a traceback (Python's exit 1) rather than being dressed up as a config error.
+- Nit, fixed: only "too many columns" from `CREATE TABLE` is reported as a column-count problem; other errors there go through the rule above.
+- Nit, fixed: the `cli.py` docstring now gives the wider meaning of exit 2.
+- Nit, left: with a non-UTF-8 encoding such as cp1252, a UTF-8 BOM is stored as three characters in the first value. The README limits BOM dropping to UTF-8. Added to the known gaps.
+
+After these: 59 tests OK (3 new), selftest PASS, HCRIS FY2023 rerun exit 0 with the same counts and 9 of 9 checks. The large-file check was not rerun (the loop that reads rows did not change). These last fixes are covered by their tests, not by another agent check.
 
 **Where to pick up**
 
-1. Lauren reviews and merges PR #10.
+1. Lauren reviews and merges PR #10. Two one-line confirms are in STATUS under Waiting on Lauren.
 2. Lauren clones the public repo on the remote desktop and runs `python -m data_prepper selftest`. That is the first test on Python 3.13 and SQLite 3.45.3.
 3. Chunk 007 follows the merge.
