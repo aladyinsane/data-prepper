@@ -79,7 +79,10 @@ def execute(dataset_folder, data_root=None, runs_root="runs"):
     data_root = Path(data_root) if data_root else Path(dataset_folder)
     if not data_root.is_dir():
         raise ConfigError(f"{data_root}: data root folder not found")
-    run = Run(config.dataset, runs_root)
+    try:
+        run = Run(config.dataset, runs_root)
+    except OSError as e:  # e.g. --runs is a file
+        raise ConfigError(f"{runs_root}: cannot make the run folder: {e.strerror or e}") from None
     con = run.connect()
     try:
         for number, stage, fn in STAGES:

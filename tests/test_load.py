@@ -286,6 +286,109 @@ class Load(Case):
         self.assertEqual(len(list((self.runs / "t").iterdir())), 2)
 
 
+    # Third qa-peer review (2026-11-16) and Lauren's answers (2026-11-20)
+
+    def test_rows_loaded_is_counted_from_the_table(self):
+        # If the insert into raw_<table> is skipped, the report must not say the rows were loaded.
+        import sqlite3
+
+        from data_prepper.run import Run
+
+        class SkipRawInserts:
+            def __init__(self, con):
+                self._con = con
+
+            def executemany(self, sql, rows):
+                if 'INTO "raw_' in sql:
+                    return None
+                return self._con.executemany(sql, rows)
+
+            def __getattr__(self, name):
+                return getattr(self._con, name)
+
+        real = Run.connect
+        Run.connect = lambda run: SkipRawInserts(real(run))
+        self.addCleanup(setattr, Run, "connect", real)
+        self.write("in.csv", "a,b\n1,2\n3,4\n")
+        self.write_config(one_table(src("in.csv")))
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 1, err)
+        t = self.report()["tables"]["t1"]
+        self.assertEqual((t["rows_read"], t["rows_loaded"], t["rows_bad"]), (2, 0, 0))
+        self.assertEqual(self.failed_checks(), [("t1: rows read = rows loaded + rows bad", 2)])
+
+    def test_unsupported_zip_method_is_one_line_exit_2(self):
+        import zipfile
+
+        p = self.folder / "in.zip"
+        with zipfile.ZipFile(p, "w", zipfile.ZIP_STORED) as z:
+            z.writestr("m.csv", "1,2\n")
+        b = bytearray(p.read_bytes())
+        # mark the member as Deflate64 (method 9) in the local header and the central directory
+        local = bytes(b).index(b"PK\x03\x04")
+        central = bytes(b).index(b"PK\x01\x02")
+        b[local + 8] = 9
+        b[central + 10] = 9
+        p.write_bytes(bytes(b))
+        self.write_config(one_table(src("in.zip", header=False)))
+        self.assert_exit2_one_line("cannot read this zip member")
+
+    def test_runs_path_that_is_a_file_is_one_line_exit_2(self):
+        self.write("in.csv", "a,b\n1,2\n")
+        self.write_config(one_table(src("in.csv")))
+        self.runs.write_text("not a folder", encoding="utf-8")
+        self.assert_exit2_one_line("cannot make the run folder")
+
+    def test_too_many_columns_for_sqlite_is_one_line_exit_2(self):
+        cols = [f"c{i}" for i in range(2100)]
+        self.write("in.csv", ",".join("1" for _ in cols) + "\n")
+        self.write_config(one_table(src("in.csv", header=False), cols=cols))
+        self.assert_exit2_one_line("SQLite cannot make raw_t1 with 2100 columns")
+
+    def test_row_numbers_across_several_files_without_header(self):
+        self.write("p1.csv", "1,1\n2,2\n3,3\n")
+        self.write("p2.csv", "4,4\n5,5\n")
+        self.write_config(one_table(src("p*.csv", header=False)))
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.query("select _file, _row, a from raw_t1 order by _file, _row"),
+                         [("p1.csv", 1, "1"), ("p1.csv", 2, "2"), ("p1.csv", 3, "3"),
+                          ("p2.csv", 1, "4"), ("p2.csv", 2, "5")])
+
+    def test_utf8_byte_order_mark_is_dropped(self):
+        for header in (True, False):
+            with self.subTest(header=header):
+                text = ("a,b\n" if header else "") + "1,2\n"
+                (self.folder / "in.csv").write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
+                self.write_config(one_table(src("in.csv", header=header)))
+                code, out, err = self.run_cli()
+                self.assertEqual(code, 0, err)
+                self.assertEqual(self.query("select a from raw_t1"), [("1",)])
+
+    def test_byte_order_mark_in_a_zip_member_is_dropped(self):
+        self.write_zip("in.zip", {"m.csv": "\ufeff1,2\n"})
+        self.write_config(one_table(src("in.zip", header=False)))
+        self.assertEqual(self.run_cli()[0], 0)
+        self.assertEqual(self.query("select a from raw_t1"), [("1",)])
+
+    def test_one_column_blank_lines_are_empty_values(self):
+        # at the end and in the middle alike; two or more columns keep the old rule
+        self.write("in.csv", "a\n1\n\n2\n\n")
+        self.write_config(one_table(src("in.csv"), cols=("a",)))
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 0, err)
+        t = self.report()["tables"]["t1"]
+        self.assertEqual((t["rows_read"], t["rows_loaded"], t["rows_bad"]), (4, 4, 0))
+        self.assertEqual(self.query("select _row, a from raw_t1 order by _row"),
+                         [(2, "1"), (3, ""), (4, "2"), (5, "")])
+
+    def test_one_column_without_final_blank_line(self):
+        self.write("in.csv", "1\n2\n")
+        self.write_config(one_table(src("in.csv", header=False), cols=("a",)))
+        self.assertEqual(self.run_cli()[0], 0)
+        self.assertEqual(self.query("select _row, a from raw_t1 order by _row"), [(1, "1"), (2, "2")])
+
+
 class SelfTest(Case):
     def test_selftest_passes(self):
         import contextlib, io

@@ -4,12 +4,14 @@ Files are streamed, never read whole. Rows go in as text exactly as read.
 A row with the wrong number of fields goes to badrows_<table> instead.
 """
 
+import codecs
 import csv
 import fnmatch
 import glob
 import hashlib
 import io
 import re
+import sqlite3
 import zipfile
 from pathlib import Path
 
@@ -79,10 +81,14 @@ def _load_one(con, table, path, member, stats):
     bad_sql = f'INSERT INTO "badrows_{table.name}" VALUES (?,?,?,?)'
     delim = table.source.delimiter
     quoting = {} if table.source.quoting else {"quoting": csv.QUOTE_NONE, "quotechar": None}
+    # A UTF-8 byte order mark at the start of a file is dropped, not stored in the first value.
+    encoding = table.source.encoding
+    if codecs.lookup(encoding).name == "utf-8":
+        encoding = "utf-8-sig"
     at = {"reader": None}  # so a parse error can say which line of this file
 
     def run(raw):
-        with io.TextIOWrapper(raw, encoding=table.source.encoding, newline="") as text:
+        with io.TextIOWrapper(raw, encoding=encoding, newline="") as text:
             at["reader"] = csv.reader(text, delimiter=delim, **quoting)
             _copy(at["reader"])
 
@@ -103,7 +109,6 @@ def _load_one(con, table, path, member, stats):
 
         def add_bad(row):
             bad.append(row)
-            stats["rows_bad"] += 1
             if len(bad) >= BATCH:
                 con.executemany(bad_sql, bad)
                 bad.clear()
@@ -111,6 +116,8 @@ def _load_one(con, table, path, member, stats):
         for rec in reader:
             start = prev + 1  # a quoted field can span lines; _row is where the row starts
             prev = reader.line_num
+            if not rec and n == 1:  # in a one-column table a blank line is an empty value
+                rec = [""]
             if not rec:  # a blank line: ignored at the end of the file, a bad row anywhere else
                 if not blank_n:
                     blank_start = start
@@ -125,13 +132,11 @@ def _load_one(con, table, path, member, stats):
                 good.append((start, label, *rec))
                 if len(good) >= BATCH:
                     con.executemany(good_sql, good)
-                    stats["rows_loaded"] += len(good)
                     good = []
             else:
                 add_bad((label, start, len(rec), delim.join(rec)))
         if good:
             con.executemany(good_sql, good)
-            stats["rows_loaded"] += len(good)
         if bad:
             con.executemany(bad_sql, bad)
         con.commit()
@@ -157,6 +162,8 @@ def _load_one(con, table, path, member, stats):
         ) from None
     except zipfile.BadZipFile as e:
         raise ConfigError(f"table {table.name}: {label}: the zip is damaged: {e}") from None
+    except NotImplementedError as e:  # zipfile cannot read the member, e.g. Deflate64
+        raise ConfigError(f"table {table.name}: {label}: cannot read this zip member: {e}") from None
     except csv.Error as e:
         raise ConfigError(f"table {table.name}: {label}: cannot parse near line {at['reader'].line_num}: {e}") from None
 
@@ -169,7 +176,12 @@ def run_stage(run, con, config, data_root):
         files = find_files(table, data_root)
         cols = table.column_names
         coldefs = ", ".join(f'"{c}" TEXT' for c in cols)
-        con.execute(f'CREATE TABLE "raw_{table.name}" (_row INTEGER, _file TEXT, {coldefs})')
+        try:
+            con.execute(f'CREATE TABLE "raw_{table.name}" (_row INTEGER, _file TEXT, {coldefs})')
+        except sqlite3.OperationalError as e:  # e.g. more columns than SQLite allows
+            raise ConfigError(
+                f"table {table.name}: SQLite cannot make raw_{table.name} with {len(cols)} columns: {e}"
+            ) from None
         con.execute(
             f'CREATE TABLE "badrows_{table.name}" (_file TEXT, _row INTEGER, n_fields INTEGER, row_text TEXT)'
         )
@@ -183,6 +195,9 @@ def run_stage(run, con, config, data_root):
             file_entries.append({"file": path.name, "member": member, "bytes": size, "sha256": digest})
             _load_one(con, table, path, member, stats)
         line_diff = stats.pop("line_diff")
+        # Counted from the tables, so the next check fails if rows did not reach them.
+        stats["rows_loaded"] = con.execute(f'SELECT count(*) FROM "raw_{table.name}"').fetchone()[0]
+        stats["rows_bad"] = con.execute(f'SELECT count(*) FROM "badrows_{table.name}"').fetchone()[0]
         tables_report[table.name] = {"files": file_entries, **stats}
         checks.append(
             {

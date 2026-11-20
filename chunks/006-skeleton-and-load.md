@@ -1,6 +1,6 @@
 # 006: Package skeleton and the load stage
 
-- **Status:** Built, PR open, checked twice by qa-peer, bugs fixed on the branch, waiting on Lauren's review
+- **Status:** Built, PR open, checked three times by qa-peer, the third review's findings fixed on the branch and rechecked, waiting on Lauren's review
 - **Who:** agent (a cheaper model is fine; the design is already decided)
 - **Goal:** one command loads a dataset's source files into a working SQLite database and writes a load report.
 - **Inputs:**
@@ -92,7 +92,7 @@
 
 ## Handoff
 
-Built on branch `feat/006-skeleton-and-load`. All seven "Done when" boxes are met. Nothing was loosened. The ADR was not changed and nothing in it blocked the build. Not yet checked by a fresh agent.
+Built on branch `feat/006-skeleton-and-load`. All seven "Done when" boxes are met. Nothing was loosened. The ADR was not changed and nothing in it blocked the build. Since then checked by fresh qa-peer agents several times; see the sections below.
 
 Run on the laptop: Python 3.14.6, SQLite 3.50.4. Python 3.13 and SQLite 3.45.3 were not available, so they are untested. Tests and selftest also pass on Python 3.12.15 (SQLite 3.53.1), so nothing newer than 3.12 is used.
 
@@ -109,7 +109,7 @@ Run on the laptop: Python 3.14.6, SQLite 3.50.4. Python 3.13 and SQLite 3.45.3 w
 
    `rows_bad` was 0 for all three.
 3. SHA-256 of the zip. Report and `certutil -hashfile <zip> SHA256` both give `adf2ed822f8da05d9c73ecc23bf6dcf88faee052028ee3a978e9f6628235b42b`.
-4. `python -m unittest discover tests`: 31 tests, OK. They cover a good config, each kind of bad config (missing key, unknown key, wrong type, bad JSON, plus a repeated key and a missing file; exit 2 and one line on stderr each), header mismatch, a file inside a zip, several files matching one pattern, rows with the wrong field count, and rows read = rows loaded + rows bad (across several batches). They also cover the pragmas, `_row` for a quoted field that spans lines, tab delimiter and non-UTF-8 encoding, and selftest.
+4. `python -m unittest discover tests`: 31 tests at the first build, OK (56 now; see the latest section below). They cover a good config, each kind of bad config (missing key, unknown key, wrong type, bad JSON, plus a repeated key and a missing file; exit 2 and one line on stderr each), header mismatch, a file inside a zip, several files matching one pattern, rows with the wrong field count, and rows read = rows loaded + rows bad (across several batches). They also cover the pragmas, `_row` for a quoted field that spans lines, tab delimiter and non-UTF-8 encoding, and selftest.
 5. `python tests/large_file_check.py`: PASS.
 
    | File | Rows (loaded = written) | Peak memory |
@@ -176,16 +176,52 @@ Verdict: pass with fixes. Every fix above held on its own runs, the large-file c
 - Bad rows from blank lines were not written in batches of 50,000, and the list of blank lines at the end of a file grew with their number. Both are now flat in memory.
 - Also fixed from its smaller items: `"encoding": "undefined"` and a zip member with a bad CRC give one line and exit 2.
 
-Evidence after these: 44 unit tests OK (4 new), `selftest` prints `PASS load`, HCRIS FY2023 exit 0 with the same counts and nine passing checks, large-file check PASS (53.2 MB and 54.2 MB, difference 0.9). These last changes are covered by the new tests, not by a third agent check.
+Evidence after these: 44 unit tests OK (4 new), `selftest` prints `PASS load`, HCRIS FY2023 exit 0 with the same counts and nine passing checks, large-file check PASS (53.2 MB and 54.2 MB, difference 0.9). A third qa-peer review (below) then checked these changes.
 
-Known and not fixed:
+Known and not fixed at that point: a stray quote on the last line of a file with no final line break; the parse-error line far below the stray quote; blank lines in one-column tables. The first two are still open (see "Known gaps" below). The third is settled below.
+
+**Third qa-peer review, 2026-11-16 (PR #10 comment, of commit `be58e02`, fresh agent)**
+
+Verdict: pass with fixes. All seven boxes passed on its own runs (HCRIS 31 s, exit 0; hash matched `certutil`; 44 tests; large-file 54.6 MB and 53.2 MB; selftest; standard-library imports). Row counts re-derived from the zip matched, and each table's content matched its source by hash. It caught 17 of 17 bugs it injected into a copy.
+
+Must fix: (1) STATUS conflicted with main; (2) the check "rows read = rows loaded + rows bad" could not fail, because all three numbers were counters from the same loop; with the insert removed the report still passed; (3) a Deflate64 zip member, a `--runs` path that is a file, and a table with 2,100 columns each gave a traceback and exit 1. Smaller: a UTF-8 BOM ends up in the first value; this Handoff said "not yet checked" and "31 tests"; `"encoding": "idna"` was accepted; a dataset name ending in a line break gave a traceback; no test of `_row` across several files with `header: false`.
+
+**Lauren's answers, 2026-11-20**
+
+Fix both must-fix bugs before merge and fold in the smaller items. Strip a UTF-8 BOM by default. In a one-column table a blank line at the end of a file is an empty value to keep. The known gaps can wait if they are written down for later. The remote desktop has 203 GB free. The repo is now public, so the remote desktop can clone it.
+
+**Fixes, 2026-11-20**
+
+- Must fix 1 was already resolved by the merge of main (`04aed35`).
+- Must fix 2: `rows_loaded` and `rows_bad` are now `count(*)` of `raw_<table>` and `badrows_<table>` after loading. `rows_read` is still the loop's count of records. New test drops every insert into `raw_` and expects exit 1 with that check failing (count 2).
+- Must fix 3: each now gives one line on stderr and exit 2, with a test each. A zip member zipfile cannot read (Deflate64) is caught where the member is opened. A `--runs` path that cannot be made into a folder is caught where the run folder is made. A `CREATE TABLE` that SQLite turns down (too many columns) names the table and the column count. As a backstop, the command line also turns any other `OSError` or `sqlite3.Error` (disk full, no permission) into one line and exit 2, so exit 1 only ever means a failed check.
+- `"encoding"` turns down `idna`, `punycode`, `unicode-escape`, and `raw-unicode-escape`. They pass the text-encoding test but encode names or escape sequences, not file text.
+- Dataset, table, and column names now have to match their pattern in full, so a trailing line break is a config error. Error messages escape line breaks, so stderr is always one line.
+- New test: `_row` restarts at 1 in each file with `header: false` across several files.
+- A UTF-8 byte order mark is dropped when `encoding` is UTF-8 (any spelling): the file is read as `utf-8-sig`. Tests for `header: true`, `header: false`, and a zip member. In the README.
+- One-column tables: every blank line is an empty value and is loaded, at the end of a file or in the middle. Judgment call: a blank line in the middle is treated the same as one at the end, since in a one-column file it can only mean an empty value. Listed for Lauren to confirm. Tables with two or more columns are unchanged.
+
+Evidence, same commands as above, Python 3.14.6, SQLite 3.50.4:
+
+- `python -m unittest discover tests`: 56 tests, OK (12 new).
+- `python -m data_prepper selftest`: `PASS load`, exit 0.
+- HCRIS FY2023 load: exit 0, 37 s. `rows_loaded` NMRC 19,574,053, RPT 6,109, ALPHA 3,778,351, 0 bad rows, 9 of 9 checks pass. Zip SHA-256 unchanged (`adf2ed82...`).
+- `python tests/large_file_check.py`: PASS. 208 MB file 53.2 MB peak, 1,004 MB file 53.8 MB peak, difference 0.6 MB.
+
+**Known gaps, left for a later chunk (Lauren, 2026-11-20)**
+
+Listed under Ready in `STATUS.md` too.
 
 - A stray quote on the last line of a file that has no final line break still passes: the value is stored without its quote and nothing flags it.
-- The parse-error line is where the 16 MB limit was hit, which can be far below the stray quote that caused it.
-- In a one-column table a blank line is also an empty value. Blank lines at the end are dropped; one in the middle is a bad row.
+- The parse-error line is where the 16 MB field limit was hit, which can be far below the stray quote that caused it.
+- From the first check's smaller items: an exit 2 after the run folder is made leaves a `work.db` with no report; "at byte N" in the bad-encoding message is an offset in the decoder block, not the file; an empty file with a header reports "file has None"; `csv.field_size_limit` is set at import for the whole process.
+
+**Fourth qa-peer check (of the 2026-11-20 fixes)**
+
+Pending.
 
 **Where to pick up**
 
-1. Lauren reviews the PR.
-2. Lauren runs `python -m data_prepper selftest` on the remote desktop. That is the first test on Python 3.13 and SQLite 3.45.3.
-3. Merge after her review. Chunk 007 follows.
+1. Lauren reviews and merges PR #10.
+2. Lauren clones the public repo on the remote desktop and runs `python -m data_prepper selftest`. That is the first test on Python 3.13 and SQLite 3.45.3.
+3. Chunk 007 follows the merge.

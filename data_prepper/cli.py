@@ -1,6 +1,7 @@
 """Command line: run and selftest. Exit codes: 0 ok, 1 an error check failed, 2 bad config or arguments."""
 
 import argparse
+import sqlite3
 import sys
 
 from .config import ConfigError
@@ -18,6 +19,12 @@ def build_parser():
     return p
 
 
+def _one_line(message):
+    """Print an error on one line, even if a name in it holds a line break."""
+    text = str(message).replace("\r", "\\r").replace("\n", "\\n")
+    print(f"error: {text}", file=sys.stderr)
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)  # a bad argument exits 2 by itself
     if args.command == "selftest":
@@ -27,7 +34,11 @@ def main(argv=None):
     try:
         code, run = run_mod.execute(args.dataset_folder, args.data_root, args.runs)
     except ConfigError as e:
-        print(f"error: {e}", file=sys.stderr)
+        _one_line(e)
+        return 2
+    except (OSError, sqlite3.Error) as e:
+        # Disk full, no permission and the like. Exit 1 is kept for a failed check.
+        _one_line(f"{type(e).__name__}: {e}")
         return 2
     if run is not None:
         print(f"run folder: {run.dir}")

@@ -90,6 +90,18 @@ class BadConfig(Case):
                           '"header":true,"encoding":"utf-8"},"columns":{"x":{"type":"text"},"x":{"type":"text"}}}}}')
         self.assert_exit2_one_line("appears twice")
 
+    def test_encoding_idna_is_not_a_file_encoding(self):
+        self.mutate(lambda c: c["tables"]["visits"]["source"].update(encoding="idna"))
+        self.assert_exit2_one_line("tables.visits.source.encoding")
+
+    def test_dataset_name_ending_in_a_line_break(self):
+        self.mutate(lambda c: c.update(dataset="t\n"))
+        self.assert_exit2_one_line("dataset")
+
+    def test_column_name_ending_in_a_line_break(self):
+        self.mutate(lambda c: c["tables"]["visits"]["columns"].update({"x\n": {"type": "text"}}))
+        self.assert_exit2_one_line("column name must be")
+
     def test_no_config_file(self):
         code, out, err = self.run_cli()
         self.assertEqual(code, 2)

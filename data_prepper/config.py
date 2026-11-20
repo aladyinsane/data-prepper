@@ -4,6 +4,7 @@ Any problem with the config raises ConfigError. Its message is one line that
 names the file and the key. The command line prints it and exits with code 2.
 """
 
+import codecs
 import json
 import re
 from dataclasses import dataclass, field
@@ -17,6 +18,8 @@ class ConfigError(Exception):
 NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 DATASET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 COLUMN_TYPES = ("text", "number", "date")
+# Text codecs that are not for files: they encode names or escape sequences, not characters.
+NOT_FILE_ENCODINGS = {"idna", "punycode", "unicode-escape", "raw-unicode-escape"}
 
 # Sections later chunks will check. Until then they are accepted and ignored.
 LATER_SECTIONS = ("model", "merge", "summarize")
@@ -101,7 +104,7 @@ def load_config(folder):
         v = obj[key]
         if not isinstance(v, str) or not v:
             fail(f"{where}.{key}", "must be a non-empty string")
-        if pattern is not None and not pattern.match(v):
+        if pattern is not None and not pattern.fullmatch(v):
             fail(f"{where}.{key}", f"{v!r} is not a valid name (letters, digits, underscore; start with a letter)")
         return v
 
@@ -113,7 +116,7 @@ def load_config(folder):
 
     check_keys(raw, "", ["dataset", "tables"], LATER_SECTIONS)
     dataset = raw["dataset"]
-    if not isinstance(dataset, str) or not DATASET_RE.match(dataset):
+    if not isinstance(dataset, str) or not DATASET_RE.fullmatch(dataset):
         fail("dataset", "must be a name (letters, digits, underscore, hyphen)")
     for sec, kind in (("model", dict), ("merge", list), ("summarize", list)):
         if sec in raw and not isinstance(raw[sec], kind):
@@ -121,7 +124,7 @@ def load_config(folder):
 
     tables = {}
     for tname, traw in entries(raw["tables"], "tables"):
-        if not NAME_RE.match(tname):
+        if not NAME_RE.fullmatch(tname):
             fail(f"tables.{tname}", "table name must be letters, digits, underscore; start with a letter")
         if tname.lower() in {t.lower() for t in tables}:
             fail(f"tables.{tname}", "table name repeats another one (names are not case sensitive)")
@@ -140,7 +143,10 @@ def load_config(folder):
         encoding = check_str(sraw, "encoding", swhere)
         try:
             "".encode(encoding)  # also turns down codecs that are not text encodings, like base64
+            known = codecs.lookup(encoding).name not in NOT_FILE_ENCODINGS
         except (LookupError, ValueError):
+            known = False
+        if not known:
             fail(f"{swhere}.encoding", f"unknown encoding {encoding!r}")
         quoting = sraw.get("quoting", True)
         if not isinstance(quoting, bool):
@@ -156,7 +162,7 @@ def load_config(folder):
         seen = set()
         for cname, craw in entries(traw["columns"], f"{where}.columns"):
             cwhere = f"{where}.columns.{cname}"
-            if not NAME_RE.match(cname):
+            if not NAME_RE.fullmatch(cname):
                 fail(cwhere, "column name must be letters, digits, underscore; start with a letter")
             if cname.lower() in seen:
                 fail(cwhere, "column name repeats another one (names are not case sensitive)")
