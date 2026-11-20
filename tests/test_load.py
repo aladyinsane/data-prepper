@@ -333,6 +333,55 @@ class Load(Case):
         self.write_config(one_table(src("in.zip", header=False)))
         self.assert_exit2_one_line("cannot read this zip member")
 
+    def test_encrypted_zip_member_is_one_line_exit_2(self):
+        import zipfile
+
+        p = self.folder / "in.zip"
+        with zipfile.ZipFile(p, "w", zipfile.ZIP_STORED) as z:
+            z.writestr("m.csv", "1,2\n")
+        b = bytearray(p.read_bytes())
+        b[bytes(b).index(b"PK\x03\x04") + 6] |= 1  # the "encrypted" flag, local header
+        b[bytes(b).index(b"PK\x01\x02") + 8] |= 1  # and central directory
+        p.write_bytes(bytes(b))
+        self.write_config(one_table(src("in.zip", header=False)))
+        self.assert_exit2_one_line("the zip member is encrypted")
+
+    def _sqlite_error_on_insert(self, error):
+        from data_prepper.run import Run
+
+        class Fails:
+            def __init__(self, con):
+                self._con = con
+
+            def executemany(self, sql, rows):
+                raise error
+
+            def __getattr__(self, name):
+                return getattr(self._con, name)
+
+        real = Run.connect
+        Run.connect = lambda run: Fails(real(run))
+        self.addCleanup(setattr, Run, "connect", real)
+        self.write("in.csv", "a,b\n1,2\n")
+        self.write_config(one_table(src("in.csv")))
+
+    def test_disk_full_is_one_line_exit_2(self):
+        import sqlite3
+
+        e = sqlite3.OperationalError("database or disk is full")
+        e.sqlite_errorcode = sqlite3.SQLITE_FULL
+        self._sqlite_error_on_insert(e)
+        self.assert_exit2_one_line("database or disk is full")
+
+    def test_sqlite_error_from_a_bug_keeps_its_traceback(self):
+        import sqlite3
+
+        e = sqlite3.OperationalError('near "FRM": syntax error')
+        e.sqlite_errorcode = sqlite3.SQLITE_ERROR
+        self._sqlite_error_on_insert(e)
+        with self.assertRaises(sqlite3.OperationalError):
+            self.run_cli()
+
     def test_runs_path_that_is_a_file_is_one_line_exit_2(self):
         self.write("in.csv", "a,b\n1,2\n")
         self.write_config(one_table(src("in.csv")))

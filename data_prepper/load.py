@@ -150,8 +150,11 @@ def _load_one(con, table, path, member, stats):
 
     try:
         if member:
-            with zipfile.ZipFile(path) as z, z.open(member) as raw:
-                run(raw)
+            with zipfile.ZipFile(path) as z:
+                if z.getinfo(member).flag_bits & 0x1:
+                    raise ConfigError(f"table {table.name}: {label}: the zip member is encrypted")
+                with z.open(member) as raw:
+                    run(raw)
         else:
             with open(path, "rb") as raw:
                 run(raw)
@@ -178,7 +181,9 @@ def run_stage(run, con, config, data_root):
         coldefs = ", ".join(f'"{c}" TEXT' for c in cols)
         try:
             con.execute(f'CREATE TABLE "raw_{table.name}" (_row INTEGER, _file TEXT, {coldefs})')
-        except sqlite3.OperationalError as e:  # e.g. more columns than SQLite allows
+        except sqlite3.OperationalError as e:
+            if "too many columns" not in str(e):
+                raise
             raise ConfigError(
                 f"table {table.name}: SQLite cannot make raw_{table.name} with {len(cols)} columns: {e}"
             ) from None

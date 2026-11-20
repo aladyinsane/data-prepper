@@ -1,4 +1,8 @@
-"""Command line: run and selftest. Exit codes: 0 ok, 1 an error check failed, 2 bad config or arguments."""
+"""Command line: run and selftest.
+
+Exit codes: 0 ok, 1 an error check failed, 2 bad config or arguments, or a file,
+folder, or disk problem. A bug in the code still shows a traceback.
+"""
 
 import argparse
 import sqlite3
@@ -6,6 +10,11 @@ import sys
 
 from .config import ConfigError
 from . import run as run_mod
+
+# SQLite errors that come from the disk or the file, not from the code.
+DISK_ERRORS = {sqlite3.SQLITE_FULL, sqlite3.SQLITE_IOERR, sqlite3.SQLITE_CANTOPEN, sqlite3.SQLITE_READONLY,
+               sqlite3.SQLITE_PERM, sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED, sqlite3.SQLITE_CORRUPT,
+               sqlite3.SQLITE_NOTADB}
 
 
 def build_parser():
@@ -38,6 +47,9 @@ def main(argv=None):
         return 2
     except (OSError, sqlite3.Error) as e:
         # Disk full, no permission and the like. Exit 1 is kept for a failed check.
+        # Other SQLite errors (bad SQL, wrong use of the API) are bugs and keep their traceback.
+        if isinstance(e, sqlite3.Error) and (getattr(e, "sqlite_errorcode", None) or 0) & 0xFF not in DISK_ERRORS:
+            raise
         _one_line(f"{type(e).__name__}: {e}")
         return 2
     if run is not None:
