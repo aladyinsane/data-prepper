@@ -4,16 +4,15 @@ Current state only. Git history records what happened.
 
 ## Waiting on Lauren
 
-- Review and merge PR #10 for chunk 006 (branch `feat/006-skeleton-and-load`). Not merged. The third qa-peer review's findings are fixed and rechecked; the Handoff has the details.
-- After 006 is merged: clone the repo on the remote desktop (it is public now) and run `python -m data_prepper selftest`, then report the output. This is the first run on Python 3.13 and SQLite 3.45.3.
+- Clone the repo on the remote desktop (it is public now) and run `python -m data_prepper selftest`, then report the output. This is the first run on Python 3.13 and SQLite 3.45.3.
 
 ## In progress
 
-- [006](chunks/006-skeleton-and-load.md): built, PR #10 open. Four qa-peer checks, all "Done when" boxes hold. The third review's must-fix bugs and smaller items are fixed (2026-11-20), with Lauren's answers on BOMs and one-column tables built in. A fourth check passed those with fixes; its two should-fix items are fixed too. Pick up at: Lauren's review of the PR.
+(none)
 
 ## Ready
 
-- [007](chunks/007-clean-stage.md): the clean stage. After 006 is merged.
+- [007](chunks/007-clean-stage.md): the clean stage. Next build chunk.
 - [008](chunks/008-model-stage.md): the model stage. After 007 is merged.
 - [009](chunks/009-merge-stage.md): the merge stage. After 008 is merged.
 - [010](chunks/010-summarize-stage.md): the summarize stage. After 009 is merged. Finishes "HCRIS runs through all five stages from one command".
@@ -23,6 +22,7 @@ Current state only. Git history records what happened.
 
 ## Done
 
+- [006](chunks/006-skeleton-and-load.md): package skeleton and load stage. PR #10 merged 2026-11-20 after four qa-peer checks.
 - [005](chunks/005-adr-package-design.md): ADR-0001 accepted and merged.
 - Chunk files 006 to 012 written and merged.
 - Provider identifier work (old chunks 001 to 003) moved to `C:\dev\provider-changes`.
