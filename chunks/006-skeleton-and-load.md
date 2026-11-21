@@ -1,6 +1,6 @@
 # 006: Package skeleton and the load stage
 
-- **Status:** Built, PR open, checked three times by qa-peer, the third review's findings fixed on the branch and rechecked, waiting on Lauren's review
+- **Status:** Done. PR #10 merged 2026-11-20 after four qa-peer checks.
 - **Who:** agent (a cheaper model is fine; the design is already decided)
 - **Goal:** one command loads a dataset's source files into a working SQLite database and writes a load report.
 - **Inputs:**
