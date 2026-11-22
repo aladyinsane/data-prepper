@@ -23,6 +23,7 @@ NOT_FILE_ENCODINGS = {"idna", "punycode", "unicode-escape", "raw-unicode-escape"
 
 # Sections later chunks will check. Until then they are accepted and ignored.
 LATER_SECTIONS = ("merge", "summarize")
+STAGE_PREFIXES = ("raw_", "badrows_", "clean_", "reject_", "model_")  # tables the stages make for each table
 RULE_HEADER_RE = re.compile(r"--\s*(kind|severity)\s*:(.*)", re.IGNORECASE)
 
 
@@ -133,6 +134,55 @@ def scan_rule_sql(text):
     return header, statements
 
 
+def main_verb(statement):
+    """The word that says what a statement does: its first word, or for "with" the first
+    word after the list of named queries (the one outside every bracket)."""
+    words, depth, i, n = [], 0, 0, len(statement)
+    while i < n:
+        c = statement[i]
+        if statement.startswith("--", i):
+            j = statement.find("\n", i)
+            i = n if j < 0 else j
+        elif statement.startswith("/*", i):
+            j = statement.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+        elif c in "'\"`[":
+            close = "]" if c == "[" else c
+            j = i + 1
+            while True:
+                j = statement.find(close, j)
+                if j < 0:
+                    return ""
+                if close != "]" and statement.startswith(close, j + 1):
+                    j += 2
+                    continue
+                break
+            i = j + 1
+        elif c == "(":
+            depth += 1
+            i += 1
+        elif c == ")":
+            depth -= 1
+            i += 1
+        elif c.isalnum() or c == "_":
+            m = re.compile(r"\w+").match(statement, i)
+            if depth == 0:
+                words.append(m.group(0).lower())
+            i = m.end()
+        else:
+            i += 1
+        if words and words[0] != "with":
+            break
+    if not words:
+        return statement[:1]
+    if words[0] != "with":
+        return words[0]
+    for w in words[1:]:
+        if w in ("select", "insert", "update", "delete", "replace", "values"):
+            return w
+    return "with"
+
+
 def read_rule(folder, listed, where):
     """Read one rule file. Raises ConfigError (one line, naming the file) when it is not a valid rule."""
     path = Path(folder) / listed
@@ -152,10 +202,10 @@ def read_rule(folder, listed, where):
         fail(str(e))
     if "kind" not in header:
         fail("missing header '-- kind: check' or '-- kind: transform'")
-    kind = header["kind"]
+    kind = header["kind"].lower()
     if kind not in ("check", "transform"):
         fail(f"header kind is {kind!r}, must be check or transform")
-    severity = header.get("severity")
+    severity = header["severity"].lower() if "severity" in header else None
     if kind == "check":
         if severity is None:
             fail("a check needs a header '-- severity: error' or '-- severity: warn'")
@@ -167,9 +217,8 @@ def read_rule(folder, listed, where):
         fail("no statement found")
     if len(statements) > 1:
         fail(f"{len(statements)} statements found, a rule file holds exactly one select")
-    first = re.match(r"[A-Za-z]+", statements[0])
-    word = first.group(0).lower() if first else statements[0][:1]
-    if word not in ("select", "with"):
+    word = main_verb(statements[0])
+    if word != "select":
         fail(f"the statement must be a select (it may start with with), not {word!r}")
     return Rule(listed, kind, severity, statements[0])
 
@@ -309,6 +358,12 @@ def load_config(folder):
 
     if not tables:
         fail("tables", "needs at least one table")
+    lowered = {t.lower(): t for t in tables}
+    for t in tables:
+        for prefix in STAGE_PREFIXES:
+            other = lowered.get(prefix + t.lower())
+            if other is not None:
+                fail(f"tables.{other}", f"name clashes with the {prefix}<table> table the stages make for {t!r}; rename one")
 
     # Rule files are read now, so a bad one stops the run before any stage starts.
     model = {}

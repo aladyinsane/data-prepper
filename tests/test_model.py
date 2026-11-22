@@ -1,9 +1,14 @@
+import contextlib
+import io
 import json
 import sqlite3
 import unittest
+import zipfile
+from pathlib import Path
 
 from helpers import Case, config, src
 
+from data_prepper import cli
 from data_prepper.config import ConfigError, read_rule, scan_rule_sql
 
 VISITS = (
@@ -340,6 +345,122 @@ class BadRuleFiles(ModelCase):
         self.assertEqual(code, 2)
         self.assertEqual(self.query("select count(*) from model_visits"), [(5,)])
         self.assertEqual(self.query("select count(*) from sqlite_master where name like '%new_model%'"), [(0,)])
+
+
+class MoreBadRules(ModelCase):
+    bad = BadRuleFiles.bad
+
+    def test_with_then_not_a_select(self):
+        self.bad(header("check", "error") + "with x as (select 1) delete from visits;\n", "must be a select")
+        self.bad(header("check", "error") + "with x as (select 1) insert into visits select * from x;\n", "must be a select", name="b")
+
+    def test_with_recursive_and_several_named_queries_are_selects(self):
+        self.make({"visits": ["a"]}, a=header("check", "warn") + (
+            "with recursive n(i) as (select 1 union all select i + 1 from n where i < 3), "
+            "b as (select 'delete' as w) select i from n, b;\n"))
+        code, _, err = self.run_cli()
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(self.rule(self.model_report(), 0)["rows_failing"], 3)
+
+    def test_word_that_only_starts_like_select(self):
+        self.bad(header("check", "error") + "select1 from visits;\n", "must be a select")
+
+    def test_header_values_are_not_case_sensitive(self):
+        self.make({"visits": ["a"]}, a="-- Kind: Check\n-- SEVERITY: Warn\nselect id from visits where paid < 0;\n")
+        code, _, err = self.run_cli()
+        self.assertEqual((code, err), (0, ""))
+        r = self.rule(self.model_report(), 0)
+        self.assertEqual((r["kind"], r["severity"]), ("check", "warn"))
+
+    def test_runtime_data_error_is_exit_2_not_a_traceback(self):
+        self.make({"visits": ["a"]}, a=header("check", "error") + "select cast(x'ff' as text) as a from visits;\n")
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 2)
+        self.assertEqual(len(err.strip().splitlines()), 1)
+        self.assertIn("a.sql", err)
+
+    def test_non_finite_numbers_stay_valid_json(self):
+        self.make({"visits": ["a"]}, a=header("check", "warn") + "select 1e999 as big, x'ab' as blob from visits limit 1;\n")
+        code, _, err = self.run_cli()
+        self.assertEqual((code, err), (0, ""))
+        text = (self.latest_run() / "reports" / "03-model.json").read_text(encoding="utf-8")
+        row = json.loads(text, parse_constant=lambda c: self.fail(f"{c} in the report"))["rules"][0]["sample"][0]
+        self.assertEqual(row, {"big": "inf", "blob": "ab"})
+
+
+class NameClashes(ModelCase):
+    def clash(self, a, b):
+        self.write_config(config({a: {"source": src("visits.csv"), "columns": COLS},
+                                  b: {"source": src("visits.csv"), "columns": COLS}}))
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 2, (a, b))
+        self.assertEqual(len(err.strip().splitlines()), 1)
+        self.assertFalse(self.runs.exists())
+
+    def test_tables_named_like_the_stage_tables_are_turned_down(self):
+        for prefix in ("raw_", "badrows_", "clean_", "reject_", "model_"):
+            with self.subTest(prefix=prefix):
+                self.clash("x", prefix + "x")
+                self.clash(prefix + "x", "x")
+
+
+class HcrisRules(Case):
+    """The real HCRIS config and rule files, run on a few made-up rows in a made-up zip."""
+
+    HCRIS = Path(__file__).resolve().parent.parent / "datasets" / "hcris"
+
+    def rows(self, table, overrides):
+        cfg = json.loads((self.HCRIS / "dataset.json").read_text(encoding="utf-8"))
+        fake = {"integer": "1", "number": "1.5", "text": "x", "date": "01/01/2023"}
+        base = {"FY_BGN_DT": "01/01/2023", "FY_END_DT": "12/31/2023"}  # dates in order unless a test says otherwise
+        cols = cfg["tables"][table]["columns"]
+        return "\n".join(",".join({**base, **ov}.get(c, fake[v["type"]]) for c, v in cols.items()) for ov in overrides) + "\n"
+
+    def run_hcris(self, rpt, nmrc):
+        data = self.root / "data"
+        data.mkdir()
+        with zipfile.ZipFile(data / "HOSP10FY2023.ZIP", "w") as z:
+            z.writestr("HOSP10_2023_rpt.csv", self.rows("rpt", rpt))
+            z.writestr("HOSP10_2023_nmrc.csv", self.rows("nmrc", nmrc))
+            z.writestr("HOSP10_2023_alpha.csv", self.rows("alpha", [{}]))
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = cli.main(["run", str(self.HCRIS), "--data-root", str(data), "--runs", str(self.runs)])
+        run = sorted((self.runs / "hcris").iterdir())[-1]
+        rep = json.loads((run / "reports" / "03-model.json").read_text(encoding="utf-8"))
+        return code, {r["file"].split("/")[-1]: r for r in rep["rules"]}
+
+    def test_good_data_passes_both_rules(self):
+        code, rules = self.run_hcris(
+            [{"RPT_REC_NUM": "1", "FY_BGN_DT": "01/01/2023", "FY_END_DT": "12/31/2023"}],
+            [{"RPT_REC_NUM": "1"}])
+        self.assertEqual(code, 0)
+        self.assertEqual([r["rows_failing"] for r in rules.values()], [0, 0])
+
+    def test_orphan_nmrc_rows_fail_rule_010(self):
+        code, rules = self.run_hcris(
+            [{"RPT_REC_NUM": "1"}],
+            [{"RPT_REC_NUM": "1"}, {"RPT_REC_NUM": "99", "WKSHT_CD": "A000000"}, {"RPT_REC_NUM": "98"}])
+        self.assertEqual(code, 1)
+        r = rules["010_nmrc_has_report.sql"]
+        self.assertEqual((r["status"], r["rows_failing"]), ("fail", 2))
+        self.assertEqual(sorted(row["RPT_REC_NUM"] for row in r["sample"]), [98, 99])
+        self.assertEqual(rules["020_fy_dates_in_order.sql"]["status"], "pass")
+
+    def test_dates_out_of_order_fail_rule_020(self):
+        rpt = [
+            {"RPT_REC_NUM": "1", "FY_BGN_DT": "01/01/2023", "FY_END_DT": "12/31/2023"},  # fine
+            {"RPT_REC_NUM": "2", "FY_BGN_DT": "06/01/2023", "FY_END_DT": "06/01/2023"},  # same day: fails
+            {"RPT_REC_NUM": "3", "FY_BGN_DT": "06/01/2023", "FY_END_DT": "05/31/2023"},  # reversed: fails
+            {"RPT_REC_NUM": "4", "FY_BGN_DT": "06/01/2023", "FY_END_DT": ""},  # empty: not flagged
+            {"RPT_REC_NUM": "5", "FY_BGN_DT": "12/31/2022", "FY_END_DT": "01/02/2023"},  # across a year: fine
+        ]
+        code, rules = self.run_hcris(rpt, [{"RPT_REC_NUM": str(i)} for i in range(1, 6)])
+        self.assertEqual(code, 1)
+        r = rules["020_fy_dates_in_order.sql"]
+        self.assertEqual((r["status"], r["rows_failing"]), ("fail", 2))
+        self.assertEqual(sorted(row["RPT_REC_NUM"] for row in r["sample"]), [2, 3])
+        self.assertEqual(rules["010_nmrc_has_report.sql"]["status"], "pass")
 
 
 class Scanner(unittest.TestCase):

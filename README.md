@@ -42,7 +42,7 @@ Example, HCRIS FY2023 from the read-only daita copy:
 python -m data_prepper run datasets/hcris --data-root C:\dev\daita\data\bronze\cms-hcris-hospital-2552-10\files\20260928T081652Z_fy2023
 ```
 
-That took about 30 seconds and made a 2.0 GB `work.db`.
+With load, clean, and model that took about 3.5 minutes and made a 5.8 GB `work.db` (every stage keeps its tables).
 
 Python 3.13 and SQLite 3.45.3 (the remote desktop) were not available here, so neither was tested. The unit tests and selftest also pass on Python 3.12.15, so nothing newer than 3.12 is in use.
 
@@ -65,9 +65,9 @@ A rule file is header comments, then exactly one `select` statement (it may star
 select visit_id, paid_amount from visits where paid_amount < 0;
 ```
 
-- `-- kind:` is `check` or `transform`. Required. `-- severity:` is `error` or `warn`. Required on a check, not allowed on a transform. Other comment lines are ignored. Only the `--` lines before the statement count as header.
-- A missing or unknown header value, a repeated header, more than one statement, no statement, a statement that is not a `select`, an unreadable file, or a table name in `model` that is not in `tables` is a config error: one line naming the file, exit code 2. All rule files are read when the config is read, so this happens before load starts.
-- A SQL error found when a rule runs (a misspelled column, for example) also exits 2 with one line naming the file. No `03-model.json` is written in that case, and a transform that failed leaves `model_<table>` as it was.
+- `-- kind:` is `check` or `transform`. Required. `-- severity:` is `error` or `warn`. Required on a check, not allowed on a transform. Keys and values are not case sensitive. Other comment lines are ignored. Only the `--` lines before the statement count as header.
+- A missing or unknown header value, a repeated header, more than one statement, no statement, a statement that is not a `select`, an unreadable file, or a table name in `model` that is not in `tables`, a table name that clashes with a stage's own table (`x` and `model_x`, or `x` and `clean_x`, and so on) is a config error: one line naming the file, exit code 2. All rule files are read when the config is read, so this happens before load starts.
+- A SQL or data error found when a rule runs (a misspelled column, for example) also exits 2 with one line naming the file. No `03-model.json` is written in that case, and a transform that failed leaves `model_<table>` as it was.
 - At the start of the stage every config table gets `model_<table>`, a copy of `clean_<table>`, and a temp view with the plain table name that selects from it. Rules use the plain names (`visits`) and can read any table in the dataset. `clean_<table>` is never changed.
 - A **check** returns the rows that break the rule; nothing changes. Status is `pass` (no rows) or `fail`. The report has `rows_failing` and up to 20 of those rows.
 - A **transform**'s result becomes the new `model_<table>` for the table it is listed under, so a later rule sees the new rows and columns. `_file` and `_row` survive only if the query selects them. Columns the query computes have no declared type in SQLite; columns copied straight from the table keep theirs.

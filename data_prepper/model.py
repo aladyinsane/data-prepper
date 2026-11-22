@@ -12,11 +12,16 @@ an error check failed. The one exception: after a failed error check on a table,
 later transforms on that table are skipped.
 """
 
+import math
 import sqlite3
 import time
 
 from .config import ConfigError
 
+# SQLite errors that come from the disk or the file, not from a rule (same list as cli.py).
+DISK_ERRORS = {sqlite3.SQLITE_FULL, sqlite3.SQLITE_IOERR, sqlite3.SQLITE_CANTOPEN, sqlite3.SQLITE_READONLY,
+               sqlite3.SQLITE_PERM, sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED, sqlite3.SQLITE_CORRUPT,
+               sqlite3.SQLITE_NOTADB}
 SAMPLE = 20  # failing rows shown in the report for each check
 
 
@@ -34,14 +39,19 @@ def make_view(con, table):
 
 
 def json_value(v):
-    return v.hex() if isinstance(v, bytes) else v
+    if isinstance(v, bytes):
+        return v.hex()
+    if isinstance(v, float) and not math.isfinite(v):
+        return str(v)  # JSON has no Infinity
+    return v
 
 
 def rule_error(rule, e):
-    """A SQL error in a rule file is a bad rule: one line, exit 2."""
-    if isinstance(e, sqlite3.OperationalError) and getattr(e, "sqlite_errorcode", None) == sqlite3.SQLITE_ERROR:
-        return ConfigError(f"{rule.path}: SQL error: {e}")
-    return None
+    """A SQL or data error raised by a rule is a bad rule: one line, exit 2.
+    Disk and file errors are left to the command line (None)."""
+    if (getattr(e, "sqlite_errorcode", None) or 0) & 0xFF in DISK_ERRORS:
+        return None
+    return ConfigError(f"{rule.path}: SQL error: {e}")
 
 
 def run_check(con, rule):
@@ -51,8 +61,11 @@ def run_check(con, rule):
     sample = []
     if failing:
         cur = con.execute(f"SELECT * FROM {body} LIMIT {SAMPLE}")
-        names = [d[0] for d in cur.description]
-        sample = [dict(zip(names, map(json_value, row))) for row in cur.fetchall()]
+        try:
+            names = [d[0] for d in cur.description]
+            sample = [dict(zip(names, map(json_value, row))) for row in cur.fetchall()]
+        finally:
+            cur.close()  # an error here must not leave the statement open, or work.db stays locked on Windows
     return failing, sample
 
 

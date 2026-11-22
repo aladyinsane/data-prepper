@@ -67,7 +67,7 @@ Built on branch `feat/008-model-stage`. Laptop only: Python 3.14.6, SQLite 3.50.
 2. Transforms on made-up data: `Transforms::test_transform_drops_rows` (5 rows to 3, `clean_` untouched, report `rows_before` 5 and `rows_after` 3, per table `rows_in` 5 and `rows_out` 3), `test_transform_adds_column`, and `test_later_rule_sees_the_result` (drop rows, add a column, then a check that reads the new column).
 3. Order: `test_order_changes_the_answer`. The same two files, check then transform gives `fail`, `applied`. Transform then check gives `applied`, `pass`.
 4. Skipped: `test_transform_after_failed_error_check_is_skipped`. After a failed error check on `visits`, its two later transforms are `skipped` (before and after null), a later check on `visits` still runs, a transform on `clinics` still applies, `model_visits` is unchanged, and the run exits 1. A failed warn check does not skip (`test_transform_after_failed_warn_check_still_runs`).
-5. Bad rule files: `BadRuleFiles`. Each of these gives exit 2, one stderr line naming the file, nothing on stdout, and no run folder: missing kind, unknown kind, empty kind, check with no severity, unknown severity, transform with a severity, a repeated header, two statements, no statement, `delete` and `drop` (not a select), an unclosed quote, an unclosed `/* */`, a file that is not UTF-8, a missing file, a `model` table not in `tables`, a wrong-shaped `model` value, and a good file followed by a bad one. All rule files are read when the config is read, so this happens before load starts, which is earlier than "before any rule runs".
+5. Bad rule files: `BadRuleFiles` and `MoreBadRules`. Each of these gives exit 2, one stderr line naming the file, nothing on stdout, and no run folder: missing kind, unknown kind, empty kind, check with no severity, unknown severity, transform with a severity, a repeated header, two statements, no statement, `delete` and `drop` (not a select), an unclosed quote, an unclosed `/* */`, a file that is not UTF-8, a missing file, a `model` table not in `tables`, a wrong-shaped `model` value, and a good file followed by a bad one, and (after qa-peer) `with ... delete` and `with ... insert`, which pass a first-word test but are not selects. All rule files are read when the config is read, so this happens before load starts, which is earlier than "before any rule runs".
 6. Same input twice: `test_same_input_twice_gives_the_same_result` runs a dataset with a check and three transforms twice (two separate run folders), compares every row of every `model_` table sorted, and compares the whole report minus `started`, `finished`, `run_id`, and per-rule `seconds`.
 7. HCRIS FY2023 through load, clean, and model from one command (`python -m data_prepper run datasets/hcris --data-root <fy2023 folder>`), exit 0, about 3 min 33 s in all (load 34 s, clean 2 min 46 s, model 13 s). **Both checks pass:**
 
@@ -77,27 +77,49 @@ Built on branch `feat/008-model-stage`. Laptop only: Python 3.14.6, SQLite 3.50.
    | `020_fy_dates_in_order.sql` | rpt | error | **0** | 0.0 |
 
    Table counts: rpt 6,109 in and out, nmrc 19,574,053 in and out, alpha 3,778,351 in and out (no HCRIS transform, so nothing changes). Second path, plain SQL on the run's `work.db` with a different query shape: NMRC rows whose record number is not in `clean_rpt` (`NOT IN`): 0. NMRC has 6,109 distinct record numbers and RPT has 6,109 rows. RPT rows with `julianday(end) <= julianday(begin)`: 0, and the smallest gap between begin and end is 18 days. `clean_nmrc EXCEPT model_nmrc` has 0 rows. No FY date is empty in RPT (0 null begin, 0 null end), so the choice about empty dates in rule 020 changed nothing for this file.
-8. `python -m unittest discover tests`: 124 tests OK (43 new). `python -m data_prepper selftest`: `PASS load`, `PASS clean`, `PASS model`, exit 0. The model selftest runs two made-up datasets: one where an error check fails (the transform after it is skipped, exit 1) and one where the transform comes first (applied, then the check passes, exit 0).
+8. `python -m unittest discover tests`: 134 tests OK (53 new, counting the ten added after the qa-peer check). `python -m data_prepper selftest`: `PASS load`, `PASS clean`, `PASS model`, exit 0. The model selftest runs two made-up datasets: one where an error check fails (the transform after it is skipped, exit 1) and one where the transform comes first (applied, then the check passes, exit 0).
 
 **Judgment calls (change any you disagree with)**
 
 - Rule files are parsed in `config.py` (`read_rule`), when the config is read, not in `model.py`. This gives exit 2 before load starts instead of after a 3 minute load and clean. `model.py` only runs them.
-- "Header": only `-- kind:` and `-- severity:` lines (any case) that come before the statement are read. Any other comment is ignored. A repeated header line is an error. `;` and `--` inside a string or comment do not count, so they cannot fake a second statement.
-- "Statement must be a select" is checked on the first word (`select` or `with`). A `with ... delete` passes that test, but a check runs inside `select * from (...)` and a transform inside `create table as`, and both are errors for anything that is not a select, so it cannot change the tables. That error exits 2 as a SQL error (next point).
-- A SQL error found while a rule runs (misspelled column) exits 2 with one line naming the file, and no `03-model.json` is written. The chunk did not say. I chose to stop, not to record it as a failed rule, because a rule that cannot run is a bug in the rule. A failed transform leaves `model_<table>` as it was (tested). Say if you would rather have a partial report.
+- "Header": only `-- kind:` and `-- severity:` lines (keys and values are not case sensitive) that come before the statement are read. Any other comment is ignored. A repeated header line is an error. `;` and `--` inside a string or comment do not count, so they cannot fake a second statement.
+- "Statement must be a select": the word that says what the statement does must be `select`. For a statement that starts with `with`, that is the first word outside every bracket after the named queries, so `with x as (...) delete ...` is a config error at read time (exit 2, before load). As a second guard, a check runs inside `select * from (...)` and a transform inside `create table as`, and both are syntax errors for anything that is not a select, so a rule cannot change a table.
+- A SQL or data error found while a rule runs (misspelled column, a value that cannot be decoded) exits 2 with one line naming the file, and no `03-model.json` is written. The chunk did not say. I chose to stop, not to record it as a failed rule, because a rule that cannot run is a bug in the rule. A failed transform leaves `model_<table>` as it was (tested). Say if you would rather have a partial report.
 - Order across tables is the order of the keys in the `model` section (not the table order in `tables`). Within a table it is the listed order, as the chunk says. The ADR's "file-name order" is not used.
 - The check sample is `select * from (rule) limit 20` with no ordering added, so rule authors who want a fixed sample put an `order by` in the rule. The same data gave the same sample in the two-run test.
 - `failed_errors` in `run.py` now also reads `rules` in a model report (check, severity error, status fail), so the existing "write report, then stop with exit 1" path works. The model report has no separate `checks` list.
 - `model_<table>` is `create table ... as select * from clean_<table>`, which keeps the declared column types (INTEGER, REAL, TEXT) of the clean table. A column a transform computes has no declared type (tested only for copied columns). The temporary table a transform builds is `_new_model_<table>`, which cannot clash with a config table name (those start with a letter).
 - Rule 020 (`FY_END_DT <= FY_BGN_DT`) does not flag a row where either date is empty, because an empty date is a null, not a wrong order. HCRIS FY2023 has none, so it does not matter here. It is written in the rule file's comments.
-- Rule 010 uses a left join on `RPT_REC_NUM` (both columns are integer) instead of `NOT EXISTS`, because the ADR benchmark measured the left join at 3 s on this table, and 3.3 s here agrees.
+- Rule 010 uses a left join on `RPT_REC_NUM` (both columns are integer) instead of `NOT EXISTS`, because the ADR benchmark measured the left join at 3 s on this table, and 3.3 s here agrees. It tests `r.RPT_REC_NUM is null`, not `_row`, so a later RPT transform that drops `_row` cannot break it.
+- Table names that would clash with the tables the stages make (`x` with `raw_x`, `badrows_x`, `clean_x`, `reject_x`, or `model_x`) are a config error (exit 2). Found by qa-peer: without this, `model_x` could be built from the wrong table. Not tied to HCRIS, which has no such names.
 - Disk: every table now has a `model_` copy, as the chunk asks, so the HCRIS `work.db` is 5.8 GB after a full run (it was 2.6 GB right after load). The ADR warned about this. Not changed.
 
 **Not checked**
 
 - Python 3.13 and SQLite 3.45.3 (the remote desktop). Lauren's remote desktop run of `selftest` should be repeated after this merges.
 - Rules on tables with hundreds of columns or tens of millions of rows beyond HCRIS.
-- A table named like another table's raw or clean table (for example tables `x` and `raw_x`): the temp view named `raw_x` would hide the real `raw_x` table from rules only. Nothing in HCRIS does this.
+
+**qa-peer check, 2026-11-21 (fresh agent, of commit `a8fe1f9`)**
+
+Verdict: pass with fixes. All boxes held on its own runs except the bad-rule-file box, which was true for every kind of bad file it tried but `with ... delete` and `with ... insert`. Re-derived without `data_prepper`, straight from the zip: NMRC 19,574,053 rows, 6,109 distinct record numbers, RPT 6,109 rows, 0 NMRC rows with a record number missing from RPT, 0 RPT rows with an end date not after the begin date (and 0 unparsable or empty dates). Full HCRIS run from the committed code: exit 0, 34 s load, 166 s clean, 13 s model, both checks 0 rows. It also ran both rules on a made-up zip with orphan rows and equal and reversed dates, and both fired on exactly the right rows. It broke the rules in a scratch copy (skip logic off, a warn blocking, the exit-1 path, sample size 21, statement limit) and the tests caught each one, except changing `<=` to `<` in rule 020. Tests and selftest also pass on Python 3.12.15 (SQLite 3.53.1).
+
+Fixed on this branch:
+
+- Must fix: `with ... delete` and `with ... insert` ran load and clean in full, then exited 2 from a SQL error. Now a config error at read time. Tests added (`MoreBadRules`), including that a `with recursive` select with several named queries and a string `'delete'` is still accepted.
+- Should fix: table names such as `x` with `clean_x`, `model_x`, and so on made `model_x` hold the wrong rows (exit 0), or crashed with exit 1. Now a config error, tested for all five prefixes in both orders.
+- Should fix: nothing tested the HCRIS rule files (changing `<=` to `<` in 020 passed everything). `HcrisRules` runs the real `datasets/hcris` config and rules on a made-up zip: a clean case, orphan NMRC rows, and equal, reversed, empty, and across-a-year dates. The `<` mutation now fails a test.
+- Should fix: a runtime data error in a rule (`cast(x'ff' as text)`, a blob too big) gave a traceback and exit 1, which means "an error check failed". Any non-disk SQLite error from a rule is now exit 2 with one line. While testing this I found the failed sample query left `work.db` open on Windows, so the cursor is now closed in a `finally`.
+- Nits: `1e999` in a sample wrote `Infinity` into the JSON, now the text `inf`. Header values (`Check`, `Warn`) were case sensitive while keys were not, now neither is. Rule 010 no longer depends on `_row`. `select1 ...` now fails at read time. README's HCRIS timing and size are updated. STATUS has the PR number.
+
+Left as is, for Lauren (also listed in the PR):
+
+- A SQL error in a rule still gives exit 2 with no `03-model.json` (the report of the rules run so far is lost, and `work.db` has `model_` tables up to that point). qa-peer asked whether to write a partial report first.
+- Rule 020 does not flag an empty begin or end date. A date that cannot be parsed is rejected by clean, and then shows up as an unmatched record under rule 010, so it is not silently missed.
+- Absolute and `..` rule paths are accepted and recorded as written.
+- The ADR (section "A rule is one of two kinds") says rules run in file-name order. The build uses the listed order, as the chunk says. The ADR text is not changed here.
+- Each check runs its query twice (count, then sample). Cheap at 3.3 s, double cost for a slow rule.
+
+Not checked by qa-peer: Python 3.13, SQLite 3.45.3, large tables beyond HCRIS, peak memory of the model stage.
 
 **Where to pick up**
 
