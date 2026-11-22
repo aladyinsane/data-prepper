@@ -8,7 +8,7 @@ Background and design decisions are in `OVERVIEW.md`. Where things stand is in `
 
 Everything below was run on the laptop (Python 3.14.6, SQLite 3.50.4). It has not been run on the remote desktop yet.
 
-Only the load stage exists so far. Run these from the repo folder:
+The load and clean stages exist so far. Run these from the repo folder:
 
 ```
 python -m data_prepper run <dataset folder> [--data-root <folder>] [--runs <folder>]
@@ -27,7 +27,12 @@ python tests/large_file_check.py
 - Blank lines at the end of a file are ignored. A blank line anywhere else is a bad row. In a one-column table a blank line is an empty value instead, at the end of a file or anywhere else, and is loaded.
 - With `"encoding": "utf-8"`, a UTF-8 byte order mark at the start of a file is dropped, so it never ends up in the first value or the header.
 - `_file` is the bare file name (`<zip name>:<member>` for a zip member), so two files with the same name in different folders look the same.
-- `selftest` builds a small made-up dataset in a temp folder and checks the load stage against known answers. It needs no data files.
+- The clean stage turns each `raw_<table>` into `clean_<table>` (typed) and `reject_<table>`, and writes `reports/02-clean.json`. A column `type` is `text`, `integer`, `number`, or `date`. A `date` column needs a `format` in Python `strptime` codes; it is stored as `YYYY-MM-DD`. Leading and trailing spaces are removed; an empty value is null, which is not a type failure. `required: true` means null is a reject. A rejected row goes to `reject_<table>` with `reason` listing every problem in column order, then its raw text unchanged. Nothing is fixed or dropped.
+  - `integer`: optional sign, then digits, within SQLite's 64-bit range. `number`: optional sign, digits, optional `.` and digits (so `5.` and `.5` fail), optional exponent; no commas, currency signs, `NaN`, `inf`, or a value too big for a float. These rules are in `data_prepper/clean.py`.
+  - The report has, per table: rows in, rows out, rows rejected, rejects by single problem, nulls per column (in `clean_<table>`), duplicate keys, up to 20 duplicate key values, exact duplicate rows, and seconds. Duplicate keys are counted on `clean_<table>` as the number of key values on more than one row. Exact duplicate rows are the extra copies (three identical rows count as 2), compared on the typed, trimmed values. A table with no `key` skips the key check.
+  - Checks: rows in = rows out + rows rejected (error), no duplicate keys (error), no exact duplicate rows (warn), no rejected rows (warn). Rejects alone do not stop the run.
+  - If load fails an error check, the run stops there and clean does not run.
+- `selftest` builds two small made-up datasets in a temp folder and checks the load and clean stages against known answers. It needs no data files.
 - `tests/large_file_check.py` is not part of the normal test run. It makes 200 MB and 1 GB made-up files, so it needs Windows, a few minutes, and about 1.5 GB of temp disk.
 
 Example, HCRIS FY2023 from the read-only daita copy:

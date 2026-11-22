@@ -1,6 +1,6 @@
 # 007: The clean stage
 
-- **Status:** Ready, after 006 is merged
+- **Status:** Built. PR open, qa-peer check in progress (see Handoff).
 - **Who:** agent (a cheaper model is fine)
 - **Goal:** turn each raw table into a typed table, set aside the rows that fail technical checks with the reason, and report the counts.
 - **Inputs:**
@@ -58,4 +58,39 @@
 
 ## Handoff
 
-(not started)
+Built on branch `feat/007-clean-stage`. Laptop only: Python 3.14.6, SQLite 3.50.4. Python 3.13 and SQLite 3.45.3 are untested. Nothing in the chunk was loosened. SQL uses only features older than SQLite 3.45 (the reason text is built with `substr` and `||`, not `concat_ws`).
+
+**Evidence, one per box**
+
+1. Known bad rows. `tests/test_clean.py::test_known_bad_rows` loads a 12-row file (good rows, spaces around values, a bad number, a bad date, a missing required value, a row with two problems, a duplicate key, an exact duplicate row, empty values) and asserts every `clean_` row, every `reject_` row with its reason, and every report count and check. `selftest` does a smaller version of the same.
+2. Type functions. `Functions` in `tests/test_clean.py`: pass, fail, and null cases for `integer`, `number`, and `date`, plus the registered SQL functions.
+3. HCRIS FY2023 through load and clean from one command (`python -m data_prepper run datasets/hcris --data-root <fy2023 folder>`), exit 0, 3 min 16 s in all.
+
+   | Table | rows_in | rows_out | rows_rejected | check rows_in = out + rejected |
+   |---|---|---|---|---|
+   | RPT | 6,109 | 6,109 | 0 | pass |
+   | NMRC | 19,574,053 | 19,574,053 | 0 | pass |
+   | ALPHA | 3,778,351 | 3,778,351 | 0 | pass |
+
+4. NMRC key (RPT_REC_NUM, WKSHT_CD, LINE_NUM, CLMN_NUM): 0 duplicate keys, 0 exact duplicate rows. This matches the ADR benchmark. RPT key (RPT_REC_NUM) and ALPHA key (same four columns as NMRC): 0 duplicate keys.
+5. HCRIS rejects: none, for any table. All 12 checks pass (4 per table).
+6. Seconds for the NMRC clean (19,574,053 rows): **138.5 s** in the report (the whole table: both passes, counts, and both duplicate checks). RPT 0.4 s, ALPHA 21.9 s. From separate timings on that `work.db`: a plain scan of the column takes 1.7 s; running only the type checks over every row takes 27.8 s (so the checks cost about 26 s a pass); the duplicate-key group by takes 9.9 s; the exact-duplicate group by takes 11.6 s. The checks run twice (once to find rejects, once to choose the rows to keep) and the second pass also converts values and writes the table, which makes up most of the rest. This is the speed cost the ADR left unmeasured. For comparison the ADR measured 4 s to copy NMRC with typed columns and 7 s for a duplicate check.
+7. `python -m unittest discover tests`: 76 tests OK (17 new). `python -m data_prepper selftest`: `PASS load` and `PASS clean`, exit 0.
+
+**Judgment calls (change any you disagree with)**
+
+- Types in `datasets/hcris/dataset.json`: CMS defines `RPT_REC_NUM` and `NPI` as `NUMBER`. I made both `integer` (whole-number identifiers), and `ITM_VAL_NUM` stays `number`. All 23.4 million rows pass, so this changes no counts. Dates are `MM/DD/YYYY` per `HCRIS_DataDictionary.csv`.
+- Key for ALPHA: the same four columns as NMRC (the chunk said to fill a key for ALPHA but gave none). It has 0 duplicates.
+- `number` follows the chunk literally: digits, optional `.` and digits, so `5.` and `.5` fail. A value that overflows a float (`1e999`) fails as "not a number". `integer` also fails outside SQLite's 64-bit range. No HCRIS value hit these.
+- `config.py`: added `integer` as a column type, and a `date` column now needs a `format` (config error, exit 2, otherwise every value would fail).
+- `exact_duplicate_rows` counts the extra copies, so three identical rows count as 2. Compared on the typed, trimmed values.
+- `nulls` counts nulls in `clean_<table>` (kept rows). A null in a required column shows under `rejected_by_reason` instead.
+- A null key value counts as a value when looking for duplicate keys (two rows with a null key are a duplicate).
+- `rejected_by_reason` counts single problems, so a row with two problems counts once under each.
+- A date format that never matches (a typo in the config) rejects every row with "not a date (<format>)". The run still finishes. It is not caught at config time.
+- Selftest now makes a second made-up dataset for clean, because the first one stops after load on purpose.
+- `reject_<table>` and `clean_<table>` start with `_file, _row`.
+
+**Where to pick up**
+
+Lauren reviews and merges the PR. Chunk 008 (model stage) follows the merge.

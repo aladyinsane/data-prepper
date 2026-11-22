@@ -17,7 +17,7 @@ class ConfigError(Exception):
 
 NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 DATASET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
-COLUMN_TYPES = ("text", "number", "date")
+COLUMN_TYPES = ("text", "integer", "number", "date")
 # Text codecs that are not for files: they encode names or escape sequences, not characters.
 NOT_FILE_ENCODINGS = {"idna", "punycode", "unicode-escape", "raw-unicode-escape"}
 
@@ -179,6 +179,8 @@ def load_config(folder):
                 fmt = check_str(craw, "format", cwhere)
                 if ctype != "date":
                     fail(f"{cwhere}.format", "only allowed when type is date")
+            if ctype == "date" and fmt is None:
+                fail(f"{cwhere}.format", "missing key (a date column needs a strptime format)")
             columns.append(Column(cname, ctype, required, fmt))
         if not columns:
             fail(f"{where}.columns", "needs at least one column")
