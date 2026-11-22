@@ -6,12 +6,13 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import load
+from . import clean, load
 from .config import ConfigError, load_config
 
 # (report number, stage name, function). Later chunks add their stage here.
 STAGES = [
     (1, "load", load.run_stage),
+    (2, "clean", clean.run_stage),
 ]
 
 
