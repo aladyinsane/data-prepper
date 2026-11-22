@@ -22,7 +22,8 @@ COLUMN_TYPES = ("text", "integer", "number", "date")
 NOT_FILE_ENCODINGS = {"idna", "punycode", "unicode-escape", "raw-unicode-escape"}
 
 # Sections later chunks will check. Until then they are accepted and ignored.
-LATER_SECTIONS = ("model", "merge", "summarize")
+LATER_SECTIONS = ("merge", "summarize")
+RULE_HEADER_RE = re.compile(r"--\s*(kind|severity)\s*:(.*)", re.IGNORECASE)
 
 
 @dataclass
@@ -56,10 +57,121 @@ class Table:
 
 
 @dataclass
+class Rule:
+    """One model rule file. kind is check or transform; severity is set for a check only."""
+
+    path: str  # as listed in the config, relative to the dataset folder
+    kind: str
+    severity: str | None
+    sql: str  # the one select statement, no trailing semicolon, no trailing comment
+
+
+@dataclass
 class Config:
     dataset: str
     folder: Path
     tables: dict[str, Table]
+    model: dict[str, list[Rule]] = field(default_factory=dict)  # table name -> rules, in the order listed
+
+
+def scan_rule_sql(text):
+    """Split rule file text into header values and statements.
+
+    Returns (header, statements): header maps "kind" / "severity" to the value in a
+    leading "-- kind: ..." line; statements is a list of statement texts with comments
+    and the closing semicolon left off. Quotes and comments are skipped, so a ";" or a
+    "--" inside a string does not count. Raises ValueError with a short problem text.
+    """
+    header, statements = {}, []
+    i, n = 0, len(text)
+    start = last = None  # start of the current statement, end of its last token
+    while i < n:
+        c = text[i]
+        if c.isspace():
+            i += 1
+        elif text.startswith("--", i):
+            j = text.find("\n", i)
+            j = n if j < 0 else j
+            if start is None and not statements:  # still in the header
+                m = RULE_HEADER_RE.fullmatch(text[i:j].rstrip())
+                if m:
+                    key = m.group(1).lower()
+                    if key in header:
+                        raise ValueError(f"header '{key}' appears twice")
+                    header[key] = m.group(2).strip()
+            i = j
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            if j < 0:
+                raise ValueError("a /* comment is never closed")
+            i = j + 2
+        elif c == ";":
+            if start is not None:
+                statements.append(text[start:last])
+                start = last = None
+            i += 1
+        else:
+            if start is None:
+                start = i
+            if c in "'\"`[":
+                close = "]" if c == "[" else c
+                j = i + 1
+                while True:
+                    j = text.find(close, j)
+                    if j < 0:
+                        raise ValueError(f"a quote ({c}) is never closed")
+                    if close != "]" and text.startswith(close, j + 1):  # doubled quote is a literal quote
+                        j += 2
+                        continue
+                    break
+                i = j + 1
+            else:
+                i += 1
+            last = i
+    if start is not None:
+        statements.append(text[start:last])
+    return header, statements
+
+
+def read_rule(folder, listed, where):
+    """Read one rule file. Raises ConfigError (one line, naming the file) when it is not a valid rule."""
+    path = Path(folder) / listed
+
+    def fail(problem):
+        raise ConfigError(f"{path}: {problem}")
+
+    if not path.is_file():
+        raise ConfigError(f"{where}: rule file {listed!r} not found")
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError) as e:
+        fail(f"cannot read the rule file as UTF-8: {e}")
+    try:
+        header, statements = scan_rule_sql(text)
+    except ValueError as e:
+        fail(str(e))
+    if "kind" not in header:
+        fail("missing header '-- kind: check' or '-- kind: transform'")
+    kind = header["kind"]
+    if kind not in ("check", "transform"):
+        fail(f"header kind is {kind!r}, must be check or transform")
+    severity = header.get("severity")
+    if kind == "check":
+        if severity is None:
+            fail("a check needs a header '-- severity: error' or '-- severity: warn'")
+        if severity not in ("error", "warn"):
+            fail(f"header severity is {severity!r}, must be error or warn")
+    elif severity is not None:
+        fail("a transform cannot have a severity header")
+    if not statements:
+        fail("no statement found")
+    if len(statements) > 1:
+        fail(f"{len(statements)} statements found, a rule file holds exactly one select")
+    first = re.match(r"[A-Za-z]+", statements[0])
+    word = first.group(0).lower() if first else statements[0][:1]
+    if word not in ("select", "with"):
+        fail(f"the statement must be a select (it may start with with), not {word!r}")
+    return Rule(listed, kind, severity, statements[0])
 
 
 def _no_duplicate_keys(pairs):
@@ -114,7 +226,7 @@ def load_config(folder):
             fail(where, "must be an object")
         return [(k, v) for k, v in obj.items() if not (k == "note" and isinstance(v, str))]
 
-    check_keys(raw, "", ["dataset", "tables"], LATER_SECTIONS)
+    check_keys(raw, "", ["dataset", "tables"], ("model",) + LATER_SECTIONS)
     dataset = raw["dataset"]
     if not isinstance(dataset, str) or not DATASET_RE.fullmatch(dataset):
         fail("dataset", "must be a name (letters, digits, underscore, hyphen)")
@@ -197,4 +309,14 @@ def load_config(folder):
 
     if not tables:
         fail("tables", "needs at least one table")
-    return Config(dataset, folder, tables)
+
+    # Rule files are read now, so a bad one stops the run before any stage starts.
+    model = {}
+    for tname, listed in entries(raw.get("model", {}), "model"):
+        where = f"model.{tname}"
+        if tname not in tables:
+            fail(where, "not a table in tables")
+        if not isinstance(listed, list) or not all(isinstance(f, str) and f for f in listed):
+            fail(where, "must be a list of rule file names")
+        model[tname] = [read_rule(folder, f, f"{cfg_path}: {where}") for f in listed]
+    return Config(dataset, folder, tables, model)

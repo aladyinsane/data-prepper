@@ -6,13 +6,14 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import clean, load
+from . import clean, load, model
 from .config import ConfigError, load_config
 
 # (report number, stage name, function). Later chunks add their stage here.
 STAGES = [
     (1, "load", load.run_stage),
     (2, "clean", clean.run_stage),
+    (3, "model", model.run_stage),
 ]
 
 
@@ -71,7 +72,12 @@ class Run:
 
 
 def failed_errors(report):
-    return [c for c in report.get("checks", []) if c["severity"] == "error" and c["status"] == "fail"]
+    """Failed error checks in a report: its "checks" list, and the check rules in a model report."""
+    bad = [c for c in report.get("checks", []) if c["severity"] == "error" and c["status"] == "fail"]
+    for r in report.get("rules", []):
+        if r["kind"] == "check" and r["severity"] == "error" and r["status"] == "fail":
+            bad.append({"name": f"{r['table']}: {r['file']}", "count": r["rows_failing"]})
+    return bad
 
 
 def execute(dataset_folder, data_root=None, runs_root="runs"):
