@@ -164,6 +164,8 @@ def load_config(folder):
             cwhere = f"{where}.columns.{cname}"
             if not NAME_RE.fullmatch(cname):
                 fail(cwhere, "column name must be letters, digits, underscore; start with a letter")
+            if cname.lower() == "reason":
+                fail(cwhere, "column name 'reason' is reserved (reject_<table> has a reason column); rename it")
             if cname.lower() in seen:
                 fail(cwhere, "column name repeats another one (names are not case sensitive)")
             seen.add(cname.lower())

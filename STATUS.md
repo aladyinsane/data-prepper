@@ -12,7 +12,6 @@ Current state only. Git history records what happened.
 
 ## Ready
 
-- [007](chunks/007-clean-stage.md): the clean stage. Next build chunk.
 - [008](chunks/008-model-stage.md): the model stage. After 007 is merged.
 - [009](chunks/009-merge-stage.md): the merge stage. After 008 is merged.
 - [010](chunks/010-summarize-stage.md): the summarize stage. After 009 is merged. Finishes "HCRIS runs through all five stages from one command".
@@ -22,6 +21,7 @@ Current state only. Git history records what happened.
 
 ## Done
 
+- [007](chunks/007-clean-stage.md): the clean stage. [PR #16](https://github.com/aladyinsane/data-prepper/pull/16) open, checked by qa-peer, waiting on Lauren's merge.
 - [006](chunks/006-skeleton-and-load.md): package skeleton and load stage. PR #10 merged 2026-11-20 after four qa-peer checks.
 - [005](chunks/005-adr-package-design.md): ADR-0001 accepted and merged.
 - Chunk files 006 to 012 written and merged.

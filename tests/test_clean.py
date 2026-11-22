@@ -5,6 +5,7 @@ import unittest
 from helpers import Case, config, src
 
 from data_prepper import clean
+from data_prepper.config import load_config
 
 COLS = {
     "id": {"type": "text", "required": True},
@@ -223,6 +224,73 @@ class CleanStage(Case):
         code, out, err = self.run_cli()
         self.assertEqual(code, 1)
         self.assertFalse((self.latest_run() / "reports" / "02-clean.json").exists())
+
+    def test_column_named_p_is_counted_correctly(self):
+        # an alias named p used to lose to a real column named p
+        self.write("in.csv", "id,p,n\n1,x,abc\n2,,5\n3,y,zz\n")
+        self.write_config(one({"id": {"type": "text"}, "p": {"type": "text"}, "n": {"type": "number"}}, key=()))
+        self.run_cli()
+        t = self.clean_report()["tables"]["t1"]
+        self.assertEqual((t["rows_rejected"], t["rejected_by_reason"]), (2, {"n: not a number": 2}))
+
+    def test_a_column_named_reason_is_a_config_error(self):
+        self.write("in.csv", "Reason\nx\n")
+        self.write_config(one({"Reason": {"type": "text"}}, key=()))
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 2)
+        self.assertEqual(len(err.strip().splitlines()), 1)
+        self.assertIn("reserved", err)
+
+    def test_more_than_a_thousand_checked_columns(self):
+        # a long || chain of this many pieces is deeper than SQLite's expression limit of 1000
+        n = 1100
+        names = [f"c{i}" for i in range(n)]
+        row_ok = ",".join("1" for _ in names)
+        row_bad = ",".join("x" if i in (0, n - 1) else "2" for i in range(n))
+        self.write("in.csv", ",".join(names) + "\n" + row_ok + "\n" + row_bad + "\n")
+        self.write_config(one({c: {"type": "number"} for c in names}, key=()))
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 0, err)
+        t = self.clean_report()["tables"]["t1"]
+        self.assertEqual((t["rows_out"], t["rows_rejected"]), (1, 1))
+        self.assertEqual(t["rejected_by_reason"], {"c0: not a number": 1, "c1099: not a number": 1})
+        self.assertEqual(self.query("select reason from reject_t1"), [("c0: not a number; c1099: not a number",)])
+
+    def test_too_many_columns_for_the_clean_tables_is_exit_2(self):
+        # load can make raw_ with this many columns plus _row and _file; reject_ needs one more
+        n = 1998
+        names = [f"c{i}" for i in range(n)]
+        self.write("in.csv", ",".join(names) + "\n" + ",".join("1" for _ in names) + "\n")
+        self.write_config(one({c: {"type": "text"} for c in names}, key=()))
+        code, out, err = self.run_cli()
+        self.assertEqual(code, 2)
+        self.assertEqual(len(err.strip().splitlines()), 1)
+        self.assertIn("cannot make the clean and reject tables", err)
+
+    def test_the_row_count_check_can_fail(self):
+        """Break the clean insert so it loses a row: the check must fail and say how many."""
+        self.write("in.csv", "id,n\nA,1\nB,2\nC,3\n")
+        self.write_config(one({"id": {"type": "text"}, "n": {"type": "integer"}}, key=()))
+        self.assertEqual(self.run_cli()[0], 0)
+
+        class Sabotage(sqlite3.Connection):
+            def execute(self, sql, *args):
+                if sql.startswith('INSERT INTO "clean_'):
+                    sql += " AND _row != 3"
+                return super().execute(sql, *args)
+
+        table = load_config(self.folder).tables["t1"]
+        con = sqlite3.connect(self.latest_run() / "work.db", factory=Sabotage)
+        try:
+            con.execute("DROP TABLE clean_t1")
+            con.execute("DROP TABLE reject_t1")
+            clean.register_functions(con)
+            entry, checks = clean.clean_table(con, table)
+        finally:
+            con.close()
+        self.assertEqual((entry["rows_in"], entry["rows_out"], entry["rows_rejected"]), (3, 2, 0))
+        failed = [(c["name"], c["severity"], c["count"]) for c in checks if c["status"] == "fail"]
+        self.assertEqual(failed, [("t1: rows in = rows out + rows rejected", "error", 1)])
 
     def test_date_column_needs_a_format(self):
         self.write("in.csv", "d\n2023-01-01\n")

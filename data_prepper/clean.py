@@ -11,8 +11,11 @@ by an arbitrary format.
 
 import math
 import re
+import sqlite3
 import time
 from datetime import datetime
+
+from .config import ConfigError
 
 SAMPLE = 20  # duplicate key values shown in the report
 INT_MIN, INT_MAX = -(2**63), 2**63 - 1  # what an SQLite INTEGER holds
@@ -111,6 +114,29 @@ def problem_exprs(table):
     return out
 
 
+def reason_expr(probs):
+    """SQL for the reason text: every problem in column order, joined with '; ', '' when none.
+
+    The pieces are joined in a balanced tree, not one long chain, because SQLite
+    stops at an expression 1,000 levels deep and a table can have more columns than that.
+    """
+    parts = [f"coalesce('; ' || ({e}), '')" for _, e in probs]
+    if not parts:
+        return "''"
+    while len(parts) > 1:
+        parts = [f"({' || '.join(parts[i:i + 2])})" for i in range(0, len(parts), 2)]
+    return f"substr({parts[0]}, 3)"
+
+
+def create_table(con, name, ncols, sql):
+    try:
+        con.execute(sql)
+    except sqlite3.OperationalError as e:
+        if "too many columns" not in str(e):
+            raise
+        raise ConfigError(f"table {name}: SQLite cannot make the clean and reject tables with {ncols} config columns: {e}") from None
+
+
 def convert_expr(c):
     col = q(c.name)
     if c.type == "text":
@@ -131,10 +157,12 @@ def clean_table(con, table):
     cols = table.columns
     raw, clean, reject = f'"raw_{name}"', f'"clean_{name}"', f'"reject_{name}"'
     probs = problem_exprs(table)
-    reason = "substr(" + " || ".join(f"coalesce('; ' || ({e}), '')" for _, e in probs) + ", 3)" if probs else "''"
+    reason = reason_expr(probs)
 
-    con.execute(f"CREATE TABLE {clean} (_file TEXT, _row INTEGER, {', '.join(f'{q(c.name)} {sql_type(c)}' for c in cols)})")
-    con.execute(f"CREATE TABLE {reject} (_file TEXT, _row INTEGER, reason TEXT, {', '.join(f'{q(c.name)} TEXT' for c in cols)})")
+    create_table(con, name, len(cols),
+                 f"CREATE TABLE {clean} (_file TEXT, _row INTEGER, {', '.join(f'{q(c.name)} {sql_type(c)}' for c in cols)})")
+    create_table(con, name, len(cols),
+                 f"CREATE TABLE {reject} (_file TEXT, _row INTEGER, reason TEXT, {', '.join(f'{q(c.name)} TEXT' for c in cols)})")
     raw_list = ", ".join(q(c.name) for c in cols)
     con.execute(f"INSERT INTO {reject} SELECT _file, _row, {reason}, {raw_list} FROM {raw} WHERE {reason} != ''")
     con.execute(
@@ -150,7 +178,10 @@ def clean_table(con, table):
     by_reason = {}
     if rows_rejected:
         for _, expr in probs:
-            for text, n in con.execute(f"SELECT {expr} AS p, count(*) FROM {reject} WHERE p IS NOT NULL GROUP BY p"):
+            # _problem cannot clash with a column name: those start with a letter
+            for text, n in con.execute(
+                f"SELECT {expr} AS _problem, count(*) FROM {reject} WHERE _problem IS NOT NULL GROUP BY _problem"
+            ):
                 by_reason[text] = n
 
     counts = con.execute(
