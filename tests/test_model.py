@@ -8,8 +8,8 @@ from pathlib import Path
 
 from helpers import Case, config, src
 
-from data_prepper import cli
-from data_prepper.config import ConfigError, read_rule, scan_rule_sql
+from data_prepper import cli, model
+from data_prepper.config import ConfigError, Rule, read_rule, scan_rule_sql
 
 VISITS = (
     "id,clinic,paid\n"
@@ -397,6 +397,16 @@ class NameClashes(ModelCase):
         self.assertEqual(len(err.strip().splitlines()), 1)
         self.assertFalse(self.runs.exists())
 
+    def test_names_clash_whatever_the_case(self):
+        self.clash("x", "MODEL_X")
+        self.clash("X", "clean_x")
+
+    def test_names_that_only_look_alike_are_fine(self):
+        self.write_config(config({n: {"source": src("visits.csv"), "columns": COLS}
+                                  for n in ("x", "modelx", "xclean_x", "model", "raw")}))
+        code, out, err = self.run_cli()
+        self.assertEqual((code, err), (0, ""))
+
     def test_tables_named_like_the_stage_tables_are_turned_down(self):
         for prefix in ("raw_", "badrows_", "clean_", "reject_", "model_"):
             with self.subTest(prefix=prefix):
@@ -461,6 +471,25 @@ class HcrisRules(Case):
         self.assertEqual((r["status"], r["rows_failing"]), ("fail", 2))
         self.assertEqual(sorted(row["RPT_REC_NUM"] for row in r["sample"]), [2, 3])
         self.assertEqual(rules["010_nmrc_has_report.sql"]["status"], "pass")
+
+
+class RuleErrors(unittest.TestCase):
+    RULE = Rule("rules/a.sql", "check", "error", "select 1")
+
+    def test_disk_errors_are_left_to_the_command_line(self):
+        for code in (sqlite3.SQLITE_FULL, sqlite3.SQLITE_IOERR, sqlite3.SQLITE_CANTOPEN, sqlite3.SQLITE_READONLY,
+                     sqlite3.SQLITE_BUSY, sqlite3.SQLITE_CORRUPT):
+            e = sqlite3.OperationalError("disk trouble")
+            e.sqlite_errorcode = code
+            self.assertIsNone(model.rule_error(self.RULE, e), code)
+
+    def test_sql_and_data_errors_are_rule_errors(self):
+        for code in (sqlite3.SQLITE_ERROR, sqlite3.SQLITE_TOOBIG, None):
+            e = sqlite3.OperationalError("no such column: nope")
+            e.sqlite_errorcode = code
+            err = model.rule_error(self.RULE, e)
+            self.assertIsInstance(err, ConfigError)
+            self.assertIn("rules/a.sql", str(err))
 
 
 class Scanner(unittest.TestCase):

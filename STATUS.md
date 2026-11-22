@@ -20,7 +20,7 @@ Current state only. Git history records what happened.
 
 ## Done
 
-- [008](chunks/008-model-stage.md): the model stage. PR #N open, checked by qa-peer, waiting on Lauren's merge. Both HCRIS checks pass with 0 failing rows.
+- [008](chunks/008-model-stage.md): the model stage. [PR #17](https://github.com/aladyinsane/data-prepper/pull/17) open, checked by qa-peer, waiting on Lauren's merge. Both HCRIS checks pass with 0 failing rows.
 - [007](chunks/007-clean-stage.md): the clean stage. [PR #16](https://github.com/aladyinsane/data-prepper/pull/16) merged.
 - [006](chunks/006-skeleton-and-load.md): package skeleton and load stage. PR #10 merged 2026-11-20 after four qa-peer checks.
 - [005](chunks/005-adr-package-design.md): ADR-0001 accepted and merged.

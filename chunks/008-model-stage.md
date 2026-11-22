@@ -1,6 +1,6 @@
 # 008: The model stage
 
-- **Status:** Built. PR open, checked by qa-peer (see Handoff), waiting on Lauren's merge.
+- **Status:** Built. [PR #17](https://github.com/aladyinsane/data-prepper/pull/17) open, checked by qa-peer (see Handoff), waiting on Lauren's merge.
 - **Who:** agent (a cheaper model is fine)
 - **Goal:** run a dataset's `.sql` rule files in order against the clean tables, and report what each rule did.
 - **Inputs:**
@@ -77,7 +77,7 @@ Built on branch `feat/008-model-stage`. Laptop only: Python 3.14.6, SQLite 3.50.
    | `020_fy_dates_in_order.sql` | rpt | error | **0** | 0.0 |
 
    Table counts: rpt 6,109 in and out, nmrc 19,574,053 in and out, alpha 3,778,351 in and out (no HCRIS transform, so nothing changes). Second path, plain SQL on the run's `work.db` with a different query shape: NMRC rows whose record number is not in `clean_rpt` (`NOT IN`): 0. NMRC has 6,109 distinct record numbers and RPT has 6,109 rows. RPT rows with `julianday(end) <= julianday(begin)`: 0, and the smallest gap between begin and end is 18 days. `clean_nmrc EXCEPT model_nmrc` has 0 rows. No FY date is empty in RPT (0 null begin, 0 null end), so the choice about empty dates in rule 020 changed nothing for this file.
-8. `python -m unittest discover tests`: 134 tests OK (53 new, counting the ten added after the qa-peer check). `python -m data_prepper selftest`: `PASS load`, `PASS clean`, `PASS model`, exit 0. The model selftest runs two made-up datasets: one where an error check fails (the transform after it is skipped, exit 1) and one where the transform comes first (applied, then the check passes, exit 0).
+8. `python -m unittest discover tests`: 138 tests OK (57 new, including those added after the qa-peer checks). `python -m data_prepper selftest`: `PASS load`, `PASS clean`, `PASS model`, exit 0. The model selftest runs two made-up datasets: one where an error check fails (the transform after it is skipped, exit 1) and one where the transform comes first (applied, then the check passes, exit 0).
 
 **Judgment calls (change any you disagree with)**
 
@@ -120,6 +120,16 @@ Left as is, for Lauren (also listed in the PR):
 - Each check runs its query twice (count, then sample). Cheap at 3.3 s, double cost for a slow rule.
 
 Not checked by qa-peer: Python 3.13, SQLite 3.45.3, large tables beyond HCRIS, peak memory of the model stage.
+
+**qa-peer recheck, 2026-11-21 (same agent, of commit `ac723bd`)**
+
+Verdict: pass with fixes, no must-fix. It confirmed each fix by its own runs: `with ... delete/insert/update/replace` now exit 2 before any stage (38 statements run through `main_verb` and compared with SQLite itself, no bypass found), every name clash exits 2 in either order and any case while legitimate names (`raw_x` alone, `model` with `x`, `modelx`, `xclean_x`) still work, a data error in a rule is exit 2 with one line, and `work.db` is no longer left locked after a failing sample query. It ran 134 tests and selftest OK on Python 3.14.6 and 3.12.15. Its mutations of the new code were all caught except three test gaps and one nit. Fixed on this branch after the recheck:
+
+- Test added: name clashes are matched without regard to case (`x` with `MODEL_X`, `X` with `clean_x`).
+- Test added: a disk-type SQLite error raised by a rule is left to the command line (not turned into a rule error), and a plain SQL error is turned into one. Uses fake errors with the SQLite error codes.
+- STATUS and this file now carry the PR number.
+
+Not changed: a CTE named `replace` that is not quoted (`with replace as (select 1) select * from replace`) is a valid select in SQLite but is turned down with "not 'replace'". Quoting the name works. Left as is.
 
 **Where to pick up**
 
