@@ -8,11 +8,10 @@ Current state only. Git history records what happened.
 
 ## In progress
 
-(none)
+(none; paused 2026-11-22, see PROJECTS.md Parked)
 
 ## Ready
 
-- [008](chunks/008-model-stage.md): the model stage. After 007 is merged.
 - [009](chunks/009-merge-stage.md): the merge stage. After 008 is merged.
 - [010](chunks/010-summarize-stage.md): the summarize stage. After 009 is merged. Finishes "HCRIS runs through all five stages from one command".
 - [011](chunks/011-nppes-by-config.md): NPPES by config only. After 010 is merged. Needs Lauren to download the public NPPES file first.
@@ -21,7 +20,8 @@ Current state only. Git history records what happened.
 
 ## Done
 
-- [007](chunks/007-clean-stage.md): the clean stage. [PR #16](https://github.com/aladyinsane/data-prepper/pull/16) open, checked by qa-peer, waiting on Lauren's merge.
+- [008](chunks/008-model-stage.md): the model stage. [PR #17](https://github.com/aladyinsane/data-prepper/pull/17) open, not yet checked: needs a fresh qa-peer, then merge. Then 009.
+- [007](chunks/007-clean-stage.md): the clean stage. [PR #16](https://github.com/aladyinsane/data-prepper/pull/16) merged 2026-11-22.
 - [006](chunks/006-skeleton-and-load.md): package skeleton and load stage. PR #10 merged 2026-11-20 after four qa-peer checks.
 - [005](chunks/005-adr-package-design.md): ADR-0001 accepted and merged.
 - Chunk files 006 to 012 written and merged.
