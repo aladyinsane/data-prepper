@@ -8,7 +8,7 @@ Background and design decisions are in `OVERVIEW.md`. Where things stand is in `
 
 Everything below was run on the laptop (Python 3.14.6, SQLite 3.50.4). It has not been run on the remote desktop yet.
 
-The load and clean stages exist so far. Run these from the repo folder:
+The load, clean, and model stages exist so far. Run these from the repo folder:
 
 ```
 python -m data_prepper run <dataset folder> [--data-root <folder>] [--runs <folder>]
@@ -32,7 +32,8 @@ python tests/large_file_check.py
   - The report has, per table: rows in, rows out, rows rejected, rejects by single problem, nulls per column (in `clean_<table>`), duplicate keys, up to 20 duplicate key values, exact duplicate rows, and seconds. Duplicate keys are counted on `clean_<table>` as the number of key values on more than one row. Exact duplicate rows are the extra copies (three identical rows count as 2), compared on the typed, trimmed values. A table with no `key` skips the key check.
   - Checks: rows in = rows out + rows rejected (error), no duplicate keys (error), no exact duplicate rows (warn), no rejected rows (warn). Rejects alone do not stop the run.
   - If load fails an error check, the run stops there and clean does not run.
-- `selftest` builds two small made-up datasets in a temp folder and checks the load and clean stages against known answers. It needs no data files.
+- `selftest` builds small made-up datasets in a temp folder and checks the load, clean, and model stages against known answers. It needs no data files.
+- The model stage runs the rule files named in the config's `model` section and writes `reports/03-model.json`. See "Writing rules" below.
 - `tests/large_file_check.py` is not part of the normal test run. It makes 200 MB and 1 GB made-up files, so it needs Windows, a few minutes, and about 1.5 GB of temp disk.
 
 Example, HCRIS FY2023 from the read-only daita copy:
@@ -41,6 +42,35 @@ Example, HCRIS FY2023 from the read-only daita copy:
 python -m data_prepper run datasets/hcris --data-root C:\dev\daita\data\bronze\cms-hcris-hospital-2552-10\files\20260928T081652Z_fy2023
 ```
 
-That took about 30 seconds and made a 2.0 GB `work.db`.
+With load, clean, and model that took about 3.5 minutes and made a 5.8 GB `work.db` (every stage keeps its tables).
 
 Python 3.13 and SQLite 3.45.3 (the remote desktop) were not available here, so neither was tested. The unit tests and selftest also pass on Python 3.12.15, so nothing newer than 3.12 is in use.
+
+## Writing rules
+
+The model stage runs `.sql` rule files against the clean tables. The config's `model` section maps a table name to a list of rule files (paths relative to the dataset folder):
+
+```
+"model": {"nmrc": ["rules/010_nmrc_has_report.sql"], "rpt": ["rules/020_fy_dates_in_order.sql"]}
+```
+
+Tables run in the order they appear in `model`, and the rules for a table run in the order listed (not by file name). A table with no rules is still copied.
+
+A rule file is header comments, then exactly one `select` statement (it may start with `with`), with or without a final `;`:
+
+```sql
+-- kind: check
+-- severity: error
+-- Rows returned are the rows that break the rule.
+select visit_id, paid_amount from visits where paid_amount < 0;
+```
+
+- `-- kind:` is `check` or `transform`. Required. `-- severity:` is `error` or `warn`. Required on a check, not allowed on a transform. Keys and values are not case sensitive. Other comment lines are ignored. Only the `--` lines before the statement count as header.
+- A missing or unknown header value, a repeated header, more than one statement, no statement, a statement that is not a `select`, an unreadable file, or a table name in `model` that is not in `tables`, a table name that clashes with a stage's own table (`x` and `model_x`, or `x` and `clean_x`, and so on) is a config error: one line naming the file, exit code 2. All rule files are read when the config is read, so this happens before load starts.
+- A SQL or data error found when a rule runs (a misspelled column, for example) also exits 2 with one line naming the file. No `03-model.json` is written in that case, and a transform that failed leaves `model_<table>` as it was.
+- At the start of the stage every config table gets `model_<table>`, a copy of `clean_<table>`, and a temp view with the plain table name that selects from it. Rules use the plain names (`visits`) and can read any table in the dataset. `clean_<table>` is never changed.
+- A **check** returns the rows that break the rule; nothing changes. Status is `pass` (no rows) or `fail`. The report has `rows_failing` and up to 20 of those rows.
+- A **transform**'s result becomes the new `model_<table>` for the table it is listed under, so a later rule sees the new rows and columns. `_file` and `_row` survive only if the query selects them. Columns the query computes have no declared type in SQLite; columns copied straight from the table keep theirs.
+- All rules run and the report is written. Then, if any check with severity `error` failed, the run exits 1. The one exception: after a failed error check on a table, later transforms listed for that same table are reported as `skipped`. Later checks on it still run, and other tables are not affected.
+- `03-model.json` has one entry per rule in run order (`table`, `file`, `kind`, `severity`, `status`, `rows_failing` and `sample` for a check, `rows_before` and `rows_after` for a transform, `seconds`), and per table `rows_in` and `rows_out`. `rows_before` and `rows_after` are null for a skipped transform.
+- SQL runs on SQLite 3.45.3 on the remote desktop. Don't use anything newer.

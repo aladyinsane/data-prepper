@@ -1,6 +1,6 @@
 {
   "dataset": "hcris",
-  "note": "CMS HCRIS hospital 2552-10. Column names and order from HCRIS_TABLE_DESCRIPTIONS _AND_SQL.txt in hospital2010-documentation.zip, checked against the first rows of each FY2023 file. The files have no header row. Types follow the CMS table definitions, where NUMBER is read as integer for the two whole-number identifiers (RPT_REC_NUM, NPI) and as number for ITM_VAL_NUM. Dates are MM/DD/YYYY per HCRIS_DataDictionary.csv. Keys: RPT_REC_NUM for RPT; report record number, worksheet, line, column for NMRC and ALPHA. Other sections come in later chunks.",
+  "note": "CMS HCRIS hospital 2552-10. Column names and order from HCRIS_TABLE_DESCRIPTIONS _AND_SQL.txt in hospital2010-documentation.zip, checked against the first rows of each FY2023 file. The files have no header row. Types follow the CMS table definitions, where NUMBER is read as integer for the two whole-number identifiers (RPT_REC_NUM, NPI) and as number for ITM_VAL_NUM. Dates are MM/DD/YYYY per HCRIS_DataDictionary.csv. Keys: RPT_REC_NUM for RPT; report record number, worksheet, line, column for NMRC and ALPHA. The model section lists structural checks only. Other sections come in later chunks.",
   "tables": {
     "rpt": {
       "source": {"path": "HOSP10FY*.ZIP", "member": "HOSP10_*_rpt.csv", "delimiter": ",", "header": false, "encoding": "utf-8", "quoting": false},
@@ -48,5 +48,9 @@
       },
       "key": ["RPT_REC_NUM", "WKSHT_CD", "LINE_NUM", "CLMN_NUM"]
     }
+  },
+  "model": {
+    "nmrc": ["rules/010_nmrc_has_report.sql"],
+    "rpt": ["rules/020_fy_dates_in_order.sql"]
   }
 }

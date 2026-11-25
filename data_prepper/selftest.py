@@ -1,9 +1,10 @@
 """selftest: build small made-up datasets, run every stage, compare to known answers.
 
 Needs no data files, so it is the check to run on the remote desktop.
-Two datasets: one with rows of the wrong field count (the run stops after load,
-on purpose), and one for the clean stage, which runs every stage to the end.
-Later chunks add their stage to the second one.
+Three datasets: one with rows of the wrong field count (the run stops after load,
+on purpose), one for the clean stage (stops after clean, on purpose), and one for
+the model stage, which runs every stage to the end. Later chunks add their stage
+to the last one.
 """
 
 import contextlib
@@ -163,6 +164,62 @@ def check_clean(run, code):
     return problems
 
 
+# The model dataset: one table, three rules in order. Check 010 fails (error) on two rows;
+# transform 020 would drop them but is skipped; check 030 (warn) still runs.
+MODEL_FILE = "id,amount\nM1,10\nM2,-5\nM3,7\nM4,-1\nM5,3\n"
+MODEL_RULES = {
+    "010_not_negative.sql": "-- kind: check\n-- severity: error\nselect id, amount from m where amount < 0;\n",
+    "020_drop_negative.sql": "-- kind: transform\nselect * from m where amount >= 0;\n",
+    "030_big_amounts.sql": "-- kind: check\n-- severity: warn\nselect id from m where amount > 5;\n",
+}
+# A second dataset with the transform first, so it is applied and the check then passes.
+MODEL_RULES_REORDERED = ["rules/020_drop_negative.sql", "rules/010_not_negative.sql"]
+
+
+def make_model_dataset(folder, rule_files, name):
+    folder = Path(folder)
+    (folder / "rules").mkdir(parents=True)
+    for fname, text in MODEL_RULES.items():
+        (folder / "rules" / fname).write_text(text, encoding="utf-8")
+    config = {
+        "dataset": name,
+        "tables": {
+            "m": {
+                "source": {"path": "m.csv", "delimiter": ",", "header": True, "encoding": "utf-8"},
+                "columns": {"id": {"type": "text"}, "amount": {"type": "number"}},
+                "key": ["id"],
+            }
+        },
+        "model": {"m": rule_files},
+    }
+    (folder / "dataset.json").write_text(json.dumps(config), encoding="utf-8")
+    (folder / "m.csv").write_text(MODEL_FILE, encoding="utf-8", newline="")
+
+
+def check_model(run, code, expect_code, expect_status, expect_ids, expect_rows):
+    """Compare the model report and model_ table to the known answers. Returns a list of problems."""
+    problems = []
+    report = json.loads((run.reports_dir / "03-model.json").read_text(encoding="utf-8"))
+    got = [r["status"] for r in report["rules"]]
+    if got != expect_status:
+        problems.append(f"rule statuses {got}, expected {expect_status}")
+    if report["tables"]["m"] != expect_rows:
+        problems.append(f"table counts {report['tables']['m']}, expected {expect_rows}")
+    con = sqlite3.connect(run.db_path)
+    try:
+        ids = [r[0] for r in con.execute('select id from "model_m" order by id')]
+        n_clean = con.execute('select count(*) from "clean_m"').fetchone()[0]
+    finally:
+        con.close()
+    if ids != expect_ids:
+        problems.append(f"model_m ids {ids}, expected {expect_ids}")
+    if n_clean != 5:
+        problems.append(f"clean_m has {n_clean} rows, expected 5 (clean must not change)")
+    if code != expect_code:
+        problems.append(f"exit code {code}, expected {expect_code}")
+    return problems
+
+
 def main():
     print(f"Python {sys.version.split()[0]}, SQLite {sqlite3.sqlite_version}")
     ok = True
@@ -201,4 +258,26 @@ def main():
             return 1
         print("(the made-up clean table has a duplicate key on purpose, so the run stops with exit code 1)")
         report("clean", check_clean(run, code))
+
+        # Model, case 1: the error check fails, so the transform is skipped and the run exits 1.
+        m1 = Path(tmp) / "selftest_model_fail"
+        make_model_dataset(m1, [f"rules/{n}" for n in MODEL_RULES], "selftest_model_fail")
+        try:
+            code, run = run_quietly(m1, tmp)
+        except Exception as e:
+            print(f"FAIL model: run stopped: {e}")
+            return 1
+        print("(the first made-up model table has negative amounts on purpose, so its run stops with exit code 1)")
+        problems = check_model(run, code, 1, ["fail", "skipped", "fail"], ["M1", "M2", "M3", "M4", "M5"],
+                               {"rows_in": 5, "rows_out": 5})
+        # Model, case 2: transform first, so the check passes and the run exits 0.
+        m2 = Path(tmp) / "selftest_model_pass"
+        make_model_dataset(m2, MODEL_RULES_REORDERED, "selftest_model_pass")
+        try:
+            code, run = run_quietly(m2, tmp)
+        except Exception as e:
+            print(f"FAIL model: run stopped: {e}")
+            return 1
+        problems += check_model(run, code, 0, ["applied", "pass"], ["M1", "M3", "M5"], {"rows_in": 5, "rows_out": 3})
+        report("model", problems)
     return 0 if ok else 1

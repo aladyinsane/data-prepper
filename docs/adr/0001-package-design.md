@@ -112,7 +112,7 @@ select visit_id, paid_amount from visits where paid_amount < 0;
 
 In the example, the summary groups `visits` by `county`. That works because summarize reads the merged table, where `county` has been joined on.
 
-A rule is one of two kinds. A **check** is a query that returns the rows breaking the rule. A **transform** is a query whose result replaces the table. Rules run in file-name order. The exact header format is settled in the build chunk for the model stage.
+A rule is one of two kinds. A **check** is a query that returns the rows breaking the rule. A **transform** is a query whose result replaces the table. Rules run in the order the dataset config lists them. The exact header format is settled in the build chunk for the model stage.
 
 ### What each stage takes in and writes out
 
