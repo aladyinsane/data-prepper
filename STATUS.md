@@ -12,7 +12,7 @@ Current state only. Git history records what happened.
 
 ## Ready
 
-- [009](chunks/009-merge-stage.md): the merge stage. After 008 is merged.
+- [009](chunks/009-merge-stage.md): the merge stage. Next, when data-prepper is un-paused.
 - [010](chunks/010-summarize-stage.md): the summarize stage. After 009 is merged. Finishes "HCRIS runs through all five stages from one command".
 - Model stage: write a partial `03-model.json` before exiting 2 when a SQL error stops a rule (from 008; Lauren said defaults are fine, 2026-11-22). Same kind of gap as the 006 "`work.db` with no report" item below, so do them together. No chunk file yet. Details in the [008 Handoff](chunks/008-model-stage.md).
 - Model stage: rule 020 (`020_fy_dates_in_order.sql`) also flags an empty begin or end date (from 008). No chunk file yet.
@@ -23,7 +23,7 @@ Current state only. Git history records what happened.
 
 ## Done
 
-- [008](chunks/008-model-stage.md): the model stage. [PR #17](https://github.com/aladyinsane/data-prepper/pull/17) open, checked by qa-peer, waiting on Lauren's merge. Both HCRIS checks pass with 0 failing rows. Then 009.
+- [008](chunks/008-model-stage.md): the model stage. [PR #17](https://github.com/aladyinsane/data-prepper/pull/17) merged 2026-11-25. Both HCRIS checks pass with 0 failing rows.
 - [007](chunks/007-clean-stage.md): the clean stage. [PR #16](https://github.com/aladyinsane/data-prepper/pull/16) merged 2026-11-22.
 - [006](chunks/006-skeleton-and-load.md): package skeleton and load stage. PR #10 merged 2026-11-20 after four qa-peer checks.
 - [005](chunks/005-adr-package-design.md): ADR-0001 accepted and merged.
